@@ -1,0 +1,1167 @@
+{
+  "name": "WF1 — Bot Telegram Horizons v2.1 (Health Tracking Fixed)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "56cc4923-8c51-4590-be8e-ef876f1d4978",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -800,
+        512
+      ],
+      "webhookId": "horizons-bot-v2",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PARSE INPUT + SECURITY + CONFIG + STATE MANAGEMENT\n// v2.1 — IDs Notion corrigés + Health Tracking\n// ============================================================\n\n// --- CONFIGURATION CORRIGÉE ---\nconst CFG = {\n  CHAT_ID: 8572640484,\n  TZ: 'Europe/Paris',\n  \n  // === IDs NOTION CORRECTS ===\n  NOTION_PROJETS_DB:   '2f9f514e-a66d-81bf-a380-000b30acba41',\n  NOTION_OBJECTIFS_DB: '2f9f514e-a66d-8148-9b4f-000beaef81b4',\n  NOTION_VICTOIRES_DB: '2f9f514e-a66d-816d-8457-000bf6152991',\n  NOTION_SANTE_LOG_DB: '2f9f514e-a66d-814f-9909-000b66929316',\n  NOTION_TACHES_DB:    '9412b135-63fa-4b57-9ee6-19bf063f6bd9',\n  NOTION_REFLEXIONS_DB:'2f9f514e-a66d-81f4-8800-000bd1cac7d5',\n  \n  COLORS: {\n    'H1-Pro':        { id: '11', emoji: '🔴', label: '[PRO]',        horizon: '⚫ H1 Socle' },\n    'H1-Admin':      { id: '8',  emoji: '⚫', label: '[ADMIN]',      horizon: '⚫ H1 Socle' },\n    'H1-Santé':      { id: '2',  emoji: '🟢', label: '[SANTÉ]',      horizon: '⚫ H1 Socle' },\n    'H1-Famille':    { id: '5',  emoji: '🟡', label: '[FAMILLE]',    horizon: '⚫ H1 Socle' },\n    'H2-Croissance': { id: '9',  emoji: '🔵', label: '[CROISSANCE]', horizon: '🔵 H2 Croissance' },\n    'H3-Passion':    { id: '3',  emoji: '🟣', label: '[PASSION]',    horizon: '🟣 H3 Passion' },\n  },\n  COLOR_TO_KEY: { '11':'H1-Pro','8':'H1-Admin','2':'H1-Santé','5':'H1-Famille','9':'H2-Croissance','3':'H3-Passion' },\n  \n  POINTS: {\n    'objectif': 10, 'progres': 5, 'difficile': 7, 'insight': 3, 'milestone': 15\n  },\n  POINTS_LABELS: {\n    'objectif':  '🎯 Objectif terminé',\n    'progres':   '📈 Progrès significatif',\n    'difficile': '🔥 Action difficile',\n    'insight':   '💡 Insight',\n    'milestone': '🏆 Milestone'\n  },\n  \n  SAISON: {\n    nom: 'Saison 1 (Fév-Mars 2026)',\n    debut: '2026-02-03',\n    fin: '2026-03-16'\n  },\n  \n  AUTO_HORIZON: {\n    'sante':      'H1-Santé',\n    'admin':      'H1-Admin',\n    'famille':    'H1-Famille',\n    'travail':    'H1-Pro',\n    'projet':     null,\n    'loisir':     'H3-Passion'\n  }\n};\n\n// --- PARSE INPUT ---\nconst update = $input.first().json;\nlet chatId, text, callbackData, callbackMessageId, firstName;\n\nif (update.message) {\n  chatId = update.message.chat.id;\n  text = (update.message.text || '').trim();\n  firstName = update.message.from.first_name || '';\n} else if (update.callback_query) {\n  chatId = update.callback_query.message.chat.id;\n  callbackData = update.callback_query.data;\n  callbackMessageId = update.callback_query.message.message_id;\n  firstName = update.callback_query.from.first_name || '';\n  text = '';\n}\n\n// --- SECURITY CHECK ---\nif (chatId !== CFG.CHAT_ID) {\n  return [{ json: { route: 'silent' } }];\n}\n\n// --- STATE MANAGEMENT ---\nconst state = $getWorkflowStaticData('global');\nconst now = new Date().toISOString();\n\nfor (const [id, s] of Object.entries(state)) {\n  if (s && s.expires_at && s.expires_at < now) delete state[id];\n}\n\nconst chatState = state[String(chatId)];\n\nfunction setState(cmd, step, data = {}) {\n  const exp = new Date(Date.now() + 3600000).toISOString();\n  state[String(chatId)] = {\n    command: cmd, step, data,\n    updated_at: now, expires_at: exp\n  };\n}\n\nfunction clearState() {\n  delete state[String(chatId)];\n}\n\nfunction getState() {\n  return state[String(chatId)] || null;\n}\n\nfunction todayStr() {\n  const d = new Date();\n  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: CFG.TZ });\n}\n\nfunction makeButtons(rows) {\n  return JSON.stringify({ inline_keyboard: rows });\n}\n\n// --- ROUTING LOGIC ---\nlet route = 'silent';\nlet output = { chatId: String(chatId), cfg: CFG };\n\nif (callbackData) {\n  route = 'callback';\n  output.callbackData = callbackData;\n  output.callbackMessageId = callbackMessageId;\n  output.chatState = getState();\n  \n} else if (text.startsWith('/')) {\n  clearState();\n  const parts = text.split(/\\s+/);\n  const cmd = parts[0].toLowerCase().replace('@.*', '');\n  const args = parts.slice(1).join(' ');\n  \n  switch(cmd) {\n    case '/aide': case '/help': case '/start':\n      route = 'aide'; break;\n    case '/jour': case '/j':\n      route = 'jour'; break;\n    case '/event': case '/e':\n      route = 'event_init'; break;\n    case '/audit': case '/a':\n      route = 'audit_init'; break;\n    case '/sport': case '/s':\n      route = 'sport'; output.args = args; break;\n    case '/poids': case '/p':\n      route = 'poids'; output.args = args; break;\n    case '/eau':\n      route = 'eau'; output.args = args; break;\n    case '/victoire': case '/v':\n      route = 'victoire_init'; output.args = args; break;\n    case '/bilan': case '/b':\n      route = 'bilan'; break;\n    default:\n      route = 'unknown'; output.text = cmd;\n  }\n  \n} else if (chatState && chatState.command) {\n  route = 'state_continue';\n  output.freeText = text;\n  output.chatState = getState();\n  \n} else {\n  route = 'unknown_text';\n}\n\noutput.route = route;\noutput.firstName = firstName;\n\nreturn [{ json: output }];"
+      },
+      "id": "315117e3-b43a-4f07-b0e6-cd7f579f6196",
+      "name": "Parse & Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "aide",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "16e5f7c9-c939-4c12-84e5-296957953aa2"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "jour",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "34037679-fcae-43f2-a4fe-9e68a2ce5a8a"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "event_init",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "c2eea87b-06c7-46d9-afbd-ab5f5f45e934"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "audit_init",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "a6cf4979-c3d4-4214-8b62-57e826794533"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "sport",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e68412a5-0acd-4b9f-8673-488aa82874a1"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "poids",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "702432ac-360a-4635-a277-855213f581d5"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "eau",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "75210e5d-c98e-4091-9900-4dcac15a362e"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "victoire_init",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "dc4db535-ca4d-4830-a86f-cd7e92ada234"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "bilan",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "a6626bc4-59c5-473a-97be-83a57dcf15d4"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "callback",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "31b110d9-b8f3-41ab-ba30-a6f895d12150"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "state_continue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "f9af394b-3a90-467b-8039-8de0be254717"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "1458e04c-5c7e-40a3-925a-6bcac3ecdd69",
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -304,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === /aide ===\nconst chatId = $input.first().json.chatId;\n\nconst text = `🧭 <b>COMMANDES HORIZONS v2.1</b>\n\n📅 <b>Agenda</b>\n  /jour — Résumé agenda du jour\n  /event — Créer un événement\n\n📋 <b>Organisation</b>\n  /audit — Auditer une activité\n  /bilan — Bilan hebdomadaire\n\n💪 <b>Tracking Santé</b>\n  /sport [min] — Logger séance sport\n  /poids [kg] — Logger le poids\n  /eau [L] — Logger hydratation\n\n🏆 <b>Gamification</b>\n  /victoire [texte] — Logger une victoire\n\nℹ️ /aide — Ce message`;\n\nreturn [{ json: { chatId, text, parse_mode: 'HTML' } }];"
+      },
+      "id": "b7156538-2500-4ce5-8bc3-e77b8836e6a2",
+      "name": "Handle /aide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "antoinestarellas@gmail.com",
+          "mode": "list",
+          "cachedResultName": "antoinestarellas@gmail.com"
+        },
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ new Date(new Date().toLocaleString('en-US', {timeZone:'Europe/Paris'}).split(',')[0]).toISOString() }}",
+          "timeMax": "={{ new Date(new Date(new Date().toLocaleString('en-US', {timeZone:'Europe/Paris'}).split(',')[0]).getTime() + 86400000).toISOString() }}",
+          "singleEvents": true,
+          "orderBy": "startTime",
+          "timeZone": "Europe/Paris"
+        }
+      },
+      "id": "1b78a16b-176d-495b-9cfc-ae0fd49ab720",
+      "name": "GCal Get Today",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "yVJUoO2aQYO2Bep4",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// === FORMAT /jour ===\nconst events = $input.all().map(i => i.json).filter(e => e && e.id);\nconst chatId = $('Parse & Route').first().json.chatId;\nconst CFG = $('Parse & Route').first().json.cfg;\n\nconst dateStr = new Date().toLocaleDateString('fr-FR', {\n  weekday: 'long', day: 'numeric', month: 'long',\n  timeZone: 'Europe/Paris'\n});\n\nconst groups = { 'H1': [], 'H2': [], 'H3': [], 'other': [] };\n\nfor (const ev of events) {\n  const colorId = ev.colorId || '0';\n  const key = CFG.COLOR_TO_KEY[colorId];\n  \n  let startTime = '';\n  if (ev.start && ev.start.dateTime) {\n    startTime = new Date(ev.start.dateTime).toLocaleTimeString('fr-FR', {\n      hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris'\n    });\n  }\n  \n  const emoji = key ? CFG.COLORS[key].emoji : '📅';\n  const duration = ev.start?.dateTime && ev.end?.dateTime\n    ? Math.round((new Date(ev.end.dateTime) - new Date(ev.start.dateTime)) / 60000)\n    : 0;\n  const durStr = duration >= 60 ? `${Math.floor(duration/60)}h${duration%60 > 0 ? duration%60 : ''}` : `${duration} min`;\n  \n  const item = {\n    time: startTime,\n    text: `${startTime} ${emoji} ${ev.summary || 'Sans titre'} (${durStr})`,\n    colorId, key, id: ev.id,\n    description: ev.description || '',\n    summary: ev.summary || ''\n  };\n  \n  if (key === 'H2-Croissance' && ev.description) {\n    const ddfMatch = ev.description.match(/DDF\\s*:\\s*(.+)/i);\n    if (ddfMatch) item.text += `\\n  └ 📌 DDF : ${ddfMatch[1].trim()}`;\n  }\n  \n  if (key && key.startsWith('H1')) groups.H1.push(item);\n  else if (key && key.startsWith('H2')) groups.H2.push(item);\n  else if (key && key.startsWith('H3')) groups.H3.push(item);\n  else groups.other.push(item);\n}\n\nlet msg = `📅 <b>AGENDA — ${dateStr}</b>\\n`;\n\nif (groups.H1.length) {\n  msg += `\\n⚫ <b>H1 - SOCLE</b>\\n`;\n  groups.H1.forEach(e => { msg += `  ${e.text}\\n`; });\n}\nif (groups.H2.length) {\n  msg += `\\n🔵 <b>H2 - CROISSANCE</b>\\n`;\n  groups.H2.forEach(e => { msg += `  ${e.text}\\n`; });\n}\nif (groups.H3.length) {\n  msg += `\\n🟣 <b>H3 - PASSION</b>\\n`;\n  groups.H3.forEach(e => { msg += `  ${e.text}\\n`; });\n}\nif (groups.other.length) {\n  msg += `\\n📅 <b>AUTRES</b>\\n`;\n  groups.other.forEach(e => { msg += `  ${e.text}\\n`; });\n}\n\nif (!events.length) {\n  msg += `\\n✨ Journée libre ! Profites-en pour avancer sur un bloc 🔵 H2.`;\n}\n\nmsg += `\\n━━━━━━━━━━━━━`;\n\nconst buttons = [];\nconst h2Events = [...groups.H2];\nfor (const ev of h2Events) {\n  buttons.push([\n    { text: `✅ ${ev.summary.substring(0, 20)}`, callback_data: `done|${ev.id}` },\n    { text: '📋 Décomposer', callback_data: `decompose|${ev.id}|${ev.summary}` }\n  ]);\n}\n\nconst replyMarkup = buttons.length\n  ? JSON.stringify({ inline_keyboard: buttons })\n  : undefined;\n\nreturn [{ json: { chatId, text: msg, parse_mode: 'HTML', replyMarkup } }];"
+      },
+      "id": "17b46a48-520e-425c-ae12-5b37edb4a057",
+      "name": "Format /jour",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === INIT /event (conversationnel) ===\nconst chatId = $input.first().json.chatId;\nconst state = $getWorkflowStaticData('global');\n\nstate[String(chatId)] = {\n  command: 'event',\n  step: 'ask_horizon',\n  data: {},\n  updated_at: new Date().toISOString(),\n  expires_at: new Date(Date.now() + 3600000).toISOString()\n};\n\nconst text = '🎯 <b>Créons un événement !</b>\\n\\nQuel horizon ?';\n\nconst replyMarkup = JSON.stringify({\n  inline_keyboard: [\n    [\n      { text: '🔴 H1-Pro', callback_data: 'event_hz|H1-Pro' },\n      { text: '⚫ H1-Admin', callback_data: 'event_hz|H1-Admin' },\n      { text: '🟢 H1-Santé', callback_data: 'event_hz|H1-Santé' }\n    ],\n    [\n      { text: '🟡 H1-Famille', callback_data: 'event_hz|H1-Famille' },\n      { text: '🔵 H2-Croissance', callback_data: 'event_hz|H2-Croissance' },\n      { text: '🟣 H3-Passion', callback_data: 'event_hz|H3-Passion' }\n    ]\n  ]\n});\n\nreturn [{ json: { chatId, text, parse_mode: 'HTML', replyMarkup } }];"
+      },
+      "id": "3bf7c75a-f402-4141-9ba0-7ccd9386f96b",
+      "name": "Handle /event Init",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === INIT /audit (conversationnel) ===\nconst chatId = $input.first().json.chatId;\nconst state = $getWorkflowStaticData('global');\n\nstate[String(chatId)] = {\n  command: 'audit',\n  step: 'ask_activity',\n  data: {},\n  updated_at: new Date().toISOString(),\n  expires_at: new Date(Date.now() + 3600000).toISOString()\n};\n\nconst text = '📋 <b>AUDIT D\\'ACTIVITÉ</b>\\n\\nQuelle activité veux-tu auditer ?';\n\nreturn [{ json: { chatId, text, parse_mode: 'HTML' } }];"
+      },
+      "id": "086ea3e0-fc56-438d-8a16-3532068ab370",
+      "name": "Handle /audit Init",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === /sport [min] — CORRIGÉ v2.1 ===\n// Écrit dans Santé Log ET crée une Victoire\nconst input = $input.first().json;\nconst chatId = input.chatId;\nconst args = input.args;\nconst minutes = parseInt(args);\n\nif (!minutes || isNaN(minutes) || minutes <= 0) {\n  return [{ json: {\n    chatId, parse_mode: 'HTML',\n    text: '⚠️ Usage : <code>/sport 45</code> (minutes)',\n    healthLog: null,\n    victoire: null\n  }}];\n}\n\nconst today = new Date().toISOString().split('T')[0];\nconst text = `💪 <b>Sport logué : ${minutes} min</b>\\n📅 ${new Date().toLocaleDateString('fr-FR', {timeZone:'Europe/Paris'})}\\n🏆 +5 points (progrès)\\n✅ Santé Log + Victoire enregistrés`;\n\nreturn [{ json: {\n  chatId, text, parse_mode: 'HTML',\n  // Données pour Santé Log\n  healthLog: {\n    nom: `Sport ${minutes} min`,\n    date: today,\n    metrique: 'Sport',\n    valeur: minutes,\n    unite: 'min',\n    detail: ''\n  },\n  // Données pour Victoire\n  victoire: {\n    title: `💪 Sport ${minutes} min`,\n    type: '📈 Progrès significatif',\n    horizon: '⚫ H1 Socle',\n    points: 5,\n    saison: 'Saison 1 (Fév-Mars 2026)'\n  }\n}}];"
+      },
+      "id": "194c8901-6ad6-445b-8444-50d78e48f231",
+      "name": "Handle /sport",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === /poids [kg] — CORRIGÉ v2.1 ===\n// Écrit dans Santé Log\nconst input = $input.first().json;\nconst chatId = input.chatId;\nconst args = input.args;\nconst poids = parseFloat(args.replace(',', '.'));\n\nif (!poids || isNaN(poids) || poids < 30 || poids > 300) {\n  return [{ json: {\n    chatId, parse_mode: 'HTML',\n    text: '⚠️ Usage : <code>/poids 82.3</code> (kg)',\n    healthLog: null\n  }}];\n}\n\nconst today = new Date().toISOString().split('T')[0];\nconst text = `⚖️ <b>Poids logué : ${poids} kg</b>\\n📅 ${new Date().toLocaleDateString('fr-FR', {timeZone:'Europe/Paris'})}\\n✅ Santé Log mis à jour`;\n\nreturn [{ json: {\n  chatId, text, parse_mode: 'HTML',\n  healthLog: {\n    nom: `Poids ${poids} kg`,\n    date: today,\n    metrique: 'Poids',\n    valeur: poids,\n    unite: 'kg',\n    detail: ''\n  }\n}}];"
+      },
+      "id": "b11d6ed5-0aa1-44a7-8f63-5b1a7d8caee9",
+      "name": "Handle /poids",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === /eau [L] — AVEC CUMUL DEPUIS NOTION ===\n\n// Récupérer les données d'entrée\nconst allItems = $input.all();\n\n// Les données du Parse & Route\nlet chatId, args;\ntry {\n  const parseData = $('Parse & Route').first().json;\n  chatId = parseData.chatId;\n  args = parseData.args;\n} catch(e) {\n  chatId = '8572640484';\n  args = '';\n}\n\nconst litres = parseFloat((args || '').replace(',', '.'));\n\nif (!litres || isNaN(litres) || litres <= 0 || litres > 5) {\n  return [{ json: {\n    chatId, parse_mode: 'HTML',\n    text: '⚠️ Usage : <code>/eau 0.5</code> (litres)',\n    healthLog: null\n  }}];\n}\n\n// Calculer le cumul depuis les données Notion récupérées\nlet cumulExistant = 0;\nfor (const item of allItems) {\n  // Format Notion API standard\n  if (item.json && item.json.properties && item.json.properties.Valeur) {\n    const valeur = item.json.properties.Valeur.number;\n    if (valeur && !isNaN(valeur)) {\n      cumulExistant += valeur;\n    }\n  }\n  // Format simplifié n8n\n  if (item.json && typeof item.json.Valeur === 'number') {\n    cumulExistant += item.json.Valeur;\n  }\n}\n\n// Nouveau total = cumul existant + nouvelle entrée\nconst nouveauTotal = Math.round((cumulExistant + litres) * 10) / 10;\nconst objectif = 2.5;\nconst pct = Math.min(100, Math.round((nouveauTotal / objectif) * 100));\nconst barFull = Math.round(pct / 10);\nconst barEmpty = 10 - barFull;\nconst bar = '█'.repeat(barFull) + '░'.repeat(barEmpty);\n\nconst today = new Date().toISOString().split('T')[0];\nconst text = `💧 <b>+${litres}L logué</b>\\n📊 Total aujourd'hui : ${nouveauTotal}L / ${objectif}L\\n${bar} ${pct}%\\n✅ Santé Log mis à jour`;\n\nreturn [{ json: {\n  chatId, text, parse_mode: 'HTML',\n  healthLog: {\n    nom: `Eau +${litres}L (total: ${nouveauTotal}L)`,\n    date: today,\n    metrique: 'Eau',\n    valeur: litres,\n    unite: 'L',\n    detail: `Cumul jour: ${nouveauTotal}L`\n  }\n}}];"
+      },
+      "id": "a7e92905-0cbf-4c17-b634-e1bf3760bfc1",
+      "name": "Handle /eau",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        848
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// === INIT /victoire (conversationnel) ===\nconst input = $input.first().json;\nconst chatId = input.chatId;\nconst args = input.args;\nconst state = $getWorkflowStaticData('global');\n\nif (!args) {\n  return [{ json: {\n    chatId, parse_mode: 'HTML',\n    text: '⚠️ Usage : <code>/victoire Page pricing terminée !</code>'\n  }}];\n}\n\nstate[String(chatId)] = {\n  command: 'victoire',\n  step: 'ask_type',\n  data: { title: args },\n  updated_at: new Date().toISOString(),\n  expires_at: new Date(Date.now() + 3600000).toISOString()\n};\n\nconst text = `🏆 <b>VICTOIRE !</b>\\n\"${args}\"\\n\\nQuel type ?`;\n\nconst replyMarkup = JSON.stringify({\n  inline_keyboard: [\n    [{ text: '🎯 Objectif terminé (10pts)', callback_data: 'vic_type|objectif' }],\n    [{ text: '📈 Progrès (5pts)', callback_data: 'vic_type|progres' }],\n    [{ text: '🔥 Action difficile (7pts)', callback_data: 'vic_type|difficile' }],\n    [{ text: '💡 Insight (3pts)', callback_data: 'vic_type|insight' }],\n    [{ text: '🏆 Milestone (15pts)', callback_data: 'vic_type|milestone' }]\n  ]\n});\n\nreturn [{ json: { chatId, text, parse_mode: 'HTML', replyMarkup } }];"
+      },
+      "id": "e98519a2-d237-4e4c-9b6b-b4e6829b34f7",
+      "name": "Handle /victoire Init",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "antoinestarellas@gmail.com",
+          "mode": "list",
+          "cachedResultName": "antoinestarellas@gmail.com"
+        },
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ (() => { const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day + (day === 0 ? -6 : 1); const mon = new Date(d.setDate(diff)); mon.setHours(0,0,0,0); return mon.toISOString(); })() }}",
+          "timeMax": "={{ (() => { const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day + (day === 0 ? 0 : 7); const sun = new Date(d.setDate(diff)); sun.setHours(23,59,59,999); return sun.toISOString(); })() }}",
+          "singleEvents": true,
+          "orderBy": "startTime",
+          "timeZone": "Europe/Paris"
+        }
+      },
+      "id": "3540ddf7-7e88-40ac-bdba-12b8b1a27a12",
+      "name": "GCal Get Week",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1152
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "yVJUoO2aQYO2Bep4",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// === FORMAT /bilan ===\nconst events = $input.all().map(i => i.json).filter(e => e && e.id);\nconst chatId = $('Parse & Route').first().json.chatId;\nconst CFG = $('Parse & Route').first().json.cfg;\nconst state = $getWorkflowStaticData('global');\n\nconst weekBlocks = [];\nlet blockIndex = 1;\n\nfor (const ev of events) {\n  const colorId = ev.colorId || '0';\n  const key = CFG.COLOR_TO_KEY[colorId];\n  if (!key) continue;\n  \n  if (key.startsWith('H2') || key === 'H1-Santé' || key === 'H1-Admin') {\n    const emoji = CFG.COLORS[key].emoji;\n    const dayStr = new Date(ev.start?.dateTime || ev.start?.date)\n      .toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', timeZone: 'Europe/Paris' });\n    \n    weekBlocks.push({\n      index: blockIndex++,\n      id: ev.id,\n      summary: ev.summary || 'Sans titre',\n      emoji,\n      key,\n      dayStr\n    });\n  }\n}\n\nconst now = new Date();\nconst weekNum = Math.ceil((now - new Date(CFG.SAISON.debut)) / (7 * 86400000));\n\nlet msg = `📊 <b>BILAN SEMAINE</b>\\nSaison 1 — Semaine ${weekNum}/6\\n\\n`;\nmsg += `📅 <b>BLOCS PLANIFIÉS CETTE SEMAINE :</b>\\n\\n`;\n\nconst h2 = weekBlocks.filter(b => b.key.startsWith('H2'));\nconst h1 = weekBlocks.filter(b => b.key.startsWith('H1'));\n\nif (h2.length) {\n  msg += '🔵 <b>H2 - Croissance :</b>\\n';\n  h2.forEach(b => { msg += `  ${b.index}. ${b.emoji} ${b.summary} (${b.dayStr})\\n`; });\n  msg += '\\n';\n}\nif (h1.length) {\n  msg += '⚫ <b>H1 - Socle :</b>\\n';\n  h1.forEach(b => { msg += `  ${b.index}. ${b.emoji} ${b.summary} (${b.dayStr})\\n`; });\n  msg += '\\n';\n}\n\nmsg += 'Lesquels as-tu réalisés ?';\n\nstate[String(chatId)] = {\n  command: 'bilan',\n  step: 'check_blocks',\n  data: { blocks: weekBlocks, checked: [] },\n  updated_at: new Date().toISOString(),\n  expires_at: new Date(Date.now() + 7200000).toISOString()\n};\n\nconst buttons = weekBlocks.map(b => [\n  { text: `☐ ${b.index}. ${b.summary.substring(0, 25)}`, callback_data: `bilan_chk|${b.index}` }\n]);\nbuttons.push([{ text: '📊 Voir résultat', callback_data: 'bilan_result' }]);\n\nconst replyMarkup = JSON.stringify({ inline_keyboard: buttons });\n\nreturn [{ json: { chatId, text: msg, parse_mode: 'HTML', replyMarkup } }];"
+      },
+      "id": "a576802a-1026-42c1-b8d5-628da1596506",
+      "name": "Format /bilan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        1152
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === CALLBACK HANDLER v2.1 ===\nconst input = $input.first().json;\nconst chatId = input.chatId;\nconst cbd = input.callbackData;\nconst CFG = input.cfg;\nconst state = $getWorkflowStaticData('global');\nconst chatState = state[String(chatId)];\n\nconst [action, ...params] = cbd.split('|');\n\nlet text = '';\nlet replyMarkup;\nlet victoire = null;\nlet healthLog = null;\nlet gcalAction = 'none';\nlet gcalParams = null;\n\n// === VICTOIRE FLOW ===\nif (action === 'vic_type') {\n  const typeKey = params[0];\n  if (chatState) {\n    chatState.data.typeKey = typeKey;\n    chatState.step = 'ask_horizon';\n    chatState.updated_at = new Date().toISOString();\n  }\n  text = 'Quel horizon ?';\n  replyMarkup = JSON.stringify({ inline_keyboard: [\n    [\n      { text: '⚫ H1', callback_data: 'vic_hz|⚫ H1 Socle' },\n      { text: '🔵 H2', callback_data: 'vic_hz|🔵 H2 Croissance' },\n      { text: '🟣 H3', callback_data: 'vic_hz|🟣 H3 Passion' }\n    ]\n  ]});\n}\n\nelse if (action === 'vic_hz') {\n  const horizon = params[0];\n  if (chatState) {\n    const d = chatState.data;\n    const typeKey = d.typeKey;\n    const points = CFG.POINTS[typeKey];\n    const typeLabel = CFG.POINTS_LABELS[typeKey];\n    \n    victoire = {\n      title: d.title,\n      type: typeLabel,\n      horizon: horizon,\n      points: points,\n      saison: CFG.SAISON.nom\n    };\n    \n    text = `🎉 <b>+${points} points !</b>\\n\\n\"${d.title}\"\\n${typeLabel}\\n${horizon}`;\n    delete state[String(chatId)];\n  }\n}\n\n// === EVENT FLOW ===\nelse if (action === 'event_hz') {\n  const horizon = params[0];\n  const colorCfg = CFG.COLORS[horizon];\n  if (chatState) {\n    chatState.step = 'ask_title';\n    chatState.data.horizon = horizon;\n    chatState.data.colorId = colorCfg.id;\n    chatState.data.emoji = colorCfg.emoji;\n    chatState.data.label = colorCfg.label;\n    chatState.data.notionHorizon = colorCfg.horizon;\n    chatState.updated_at = new Date().toISOString();\n  }\n  text = `${colorCfg.emoji} Parfait ! Décris l'événement en une phrase :`;\n}\n\nelse if (action === 'event_dur') {\n  const duration = parseInt(params[0]);\n  if (chatState) {\n    chatState.step = 'ask_when';\n    chatState.data.durationMin = duration;\n    chatState.updated_at = new Date().toISOString();\n  }\n  text = '📅 Quand ? (Tape date et heure, ex: \"samedi 9h\")';\n  replyMarkup = JSON.stringify({ inline_keyboard: [\n    [\n      { text: 'Demain matin', callback_data: 'event_when|demain_matin' },\n      { text: 'Demain soir', callback_data: 'event_when|demain_soir' }\n    ],\n    [\n      { text: 'Samedi 9h', callback_data: 'event_when|samedi_9' },\n      { text: 'Dimanche 9h', callback_data: 'event_when|dimanche_9' }\n    ]\n  ]});\n}\n\nelse if (action === 'event_when') {\n  const whenKey = params[0];\n  const now = new Date();\n  let targetDate = new Date();\n  \n  switch(whenKey) {\n    case 'demain_matin':\n      targetDate.setDate(now.getDate() + 1);\n      targetDate.setHours(9, 0, 0, 0);\n      break;\n    case 'demain_soir':\n      targetDate.setDate(now.getDate() + 1);\n      targetDate.setHours(20, 0, 0, 0);\n      break;\n    case 'samedi_9':\n      const daysToSat = (6 - now.getDay() + 7) % 7 || 7;\n      targetDate.setDate(now.getDate() + daysToSat);\n      targetDate.setHours(9, 0, 0, 0);\n      break;\n    case 'dimanche_9':\n      const daysToSun = (7 - now.getDay()) % 7 || 7;\n      targetDate.setDate(now.getDate() + daysToSun);\n      targetDate.setHours(9, 0, 0, 0);\n      break;\n  }\n  \n  if (chatState) {\n    chatState.data.startTime = targetDate.toISOString();\n    const endTime = new Date(targetDate.getTime() + (chatState.data.durationMin || 60) * 60000);\n    chatState.data.endTime = endTime.toISOString();\n    chatState.updated_at = new Date().toISOString();\n    \n    if (chatState.data.horizon === 'H2-Croissance') {\n      chatState.step = 'ask_ddf';\n      text = '📌 Définition du Fini (DDF) ? Qu\\'est-ce qui signifie \"terminé\" ?\\n(Tape ta réponse ou clique Passer)';\n      replyMarkup = JSON.stringify({ inline_keyboard: [[{ text: '⏭️ Passer', callback_data: 'event_ddf|skip' }]] });\n    } else {\n      chatState.step = 'confirm';\n      const dateStr = targetDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });\n      const timeStr = targetDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });\n      const d = chatState.data;\n      text = `✅ <b>Récapitulatif :</b>\\n\\n${d.emoji} ${d.label} - ${d.title}\\n📅 ${dateStr}, ${timeStr}\\n⏱️ ${d.durationMin} min`;\n      replyMarkup = JSON.stringify({ inline_keyboard: [\n        [{ text: '✅ Confirmer', callback_data: 'event_confirm' }, { text: '❌ Annuler', callback_data: 'event_cancel' }]\n      ]});\n    }\n  }\n}\n\nelse if (action === 'event_ddf') {\n  if (chatState) {\n    chatState.data.ddf = params[0] === 'skip' ? '' : params.join('|');\n    chatState.step = 'confirm';\n    chatState.updated_at = new Date().toISOString();\n    \n    const d = chatState.data;\n    const dateStr = new Date(d.startTime).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });\n    const timeStr = new Date(d.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });\n    text = `✅ <b>Récapitulatif :</b>\\n\\n${d.emoji} ${d.label} - ${d.title}\\n📅 ${dateStr}, ${timeStr}\\n⏱️ ${d.durationMin} min`;\n    if (d.ddf) text += `\\n📌 DDF : ${d.ddf}`;\n    replyMarkup = JSON.stringify({ inline_keyboard: [\n      [{ text: '✅ Confirmer', callback_data: 'event_confirm' }, { text: '❌ Annuler', callback_data: 'event_cancel' }]\n    ]});\n  }\n}\n\nelse if (action === 'event_confirm') {\n  if (chatState && chatState.data) {\n    const d = chatState.data;\n    gcalAction = 'create_event';\n    gcalParams = {\n      summary: `${d.emoji} ${d.label} - ${d.title}`,\n      start: d.startTime,\n      end: d.endTime,\n      colorId: d.colorId,\n      description: d.ddf ? `📌 Objectif : ${d.title}\\n📋 DDF : ${d.ddf}` : ''\n    };\n    text = `🎉 <b>Événement créé dans Google Calendar !</b>\\n\\n${d.emoji} ${d.label} - ${d.title}`;\n    delete state[String(chatId)];\n  }\n}\n\nelse if (action === 'event_cancel') {\n  delete state[String(chatId)];\n  text = '❌ Création annulée.';\n}\n\n// === BILAN FLOW ===\nelse if (action === 'bilan_chk') {\n  const blockIdx = parseInt(params[0]);\n  if (chatState && chatState.data) {\n    const checked = chatState.data.checked || [];\n    const idx = checked.indexOf(blockIdx);\n    if (idx >= 0) checked.splice(idx, 1);\n    else checked.push(blockIdx);\n    chatState.data.checked = checked;\n    chatState.updated_at = new Date().toISOString();\n    \n    const blocks = chatState.data.blocks || [];\n    const buttons = blocks.map(b => {\n      const isChecked = checked.includes(b.index);\n      return [{ \n        text: `${isChecked ? '☑️' : '☐'} ${b.index}. ${b.summary.substring(0, 25)}`,\n        callback_data: `bilan_chk|${b.index}`\n      }];\n    });\n    buttons.push([{ text: '📊 Voir résultat', callback_data: 'bilan_result' }]);\n    \n    text = `☑️ ${checked.length} bloc(s) coché(s). Continue ou clique \"Voir résultat\".`;\n    replyMarkup = JSON.stringify({ inline_keyboard: buttons });\n  }\n}\n\nelse if (action === 'bilan_result') {\n  if (chatState && chatState.data) {\n    const blocks = chatState.data.blocks || [];\n    const checked = chatState.data.checked || [];\n    const total = blocks.length;\n    const done = checked.length;\n    const pct = total > 0 ? Math.round((done / total) * 100) : 0;\n    \n    const doneBlocks = blocks.filter(b => checked.includes(b.index));\n    const missedBlocks = blocks.filter(b => !checked.includes(b.index));\n    \n    text = `📊 <b>RÉSULTAT SEMAINE :</b>\\n\\n`;\n    text += `✅ Réalisés : ${done}/${total} (${pct}%)\\n`;\n    if (missedBlocks.length) {\n      text += `❌ Manqués : ${missedBlocks.map(b => b.summary).join(', ')}\\n`;\n    }\n    \n    const h2Done = doneBlocks.filter(b => b.key.startsWith('H2')).length;\n    const h2Total = blocks.filter(b => b.key.startsWith('H2')).length;\n    const h1Done = doneBlocks.filter(b => b.key.startsWith('H1')).length;\n    const h1Total = blocks.filter(b => b.key.startsWith('H1')).length;\n    \n    text += `\\n🔵 H2 : ${h2Done}/${h2Total} | ⚫ H1 : ${h1Done}/${h1Total}`;\n    \n    const weekPoints = doneBlocks.length * 5;\n    text += `\\n\\n🏆 Points semaine : ${weekPoints} pts`;\n    \n    text += '\\n\\n✅ Bilan terminé ! Rappel : Un bloc 🔵 peut être DÉPLACÉ, jamais ANNULÉ. 💪';\n    delete state[String(chatId)];\n  }\n}\n\n// === DONE (marquer événement fait) ===\nelse if (action === 'done') {\n  const eventId = params[0];\n  victoire = {\n    title: `✅ Bloc terminé`,\n    type: '📈 Progrès significatif',\n    horizon: '🔵 H2 Croissance',\n    points: 5,\n    saison: CFG.SAISON.nom\n  };\n  text = '✅ Bloc marqué comme fait ! +5 pts 🏆';\n}\n\nelse {\n  text = '⚠️ Action non reconnue.';\n}\n\nreturn [{ json: {\n  chatId, text, parse_mode: 'HTML', replyMarkup,\n  victoire, healthLog, gcalAction, gcalParams,\n  callbackQueryId: input.callbackData ? $input.first().json.callbackMessageId : undefined\n}}];"
+      },
+      "id": "bd823e02-c156-4ef0-b17e-3e1cae464f51",
+      "name": "Handle Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === STATE CONTINUE v2.1 ===\nconst input = $input.first().json;\nconst chatId = input.chatId;\nconst freeText = input.freeText;\nconst CFG = input.cfg;\nconst state = $getWorkflowStaticData('global');\nconst chatState = state[String(chatId)];\n\nif (!chatState) {\n  return [{ json: { chatId, text: 'Tape /aide pour voir les commandes disponibles.', parse_mode: 'HTML' } }];\n}\n\nconst cmd = chatState.command;\nconst step = chatState.step;\nlet text = '';\nlet replyMarkup;\nlet victoire = null;\nlet healthLog = null;\nlet gcalAction = 'none';\nlet gcalParams = null;\n\n// === EVENT: titre libre ===\nif (cmd === 'event' && step === 'ask_title') {\n  chatState.data.title = freeText;\n  chatState.step = 'ask_duration';\n  chatState.updated_at = new Date().toISOString();\n  \n  text = '⏰ Durée estimée ?';\n  replyMarkup = JSON.stringify({ inline_keyboard: [\n    [\n      { text: '30 min', callback_data: 'event_dur|30' },\n      { text: '1h', callback_data: 'event_dur|60' },\n      { text: '1h30', callback_data: 'event_dur|90' },\n      { text: '2h', callback_data: 'event_dur|120' }\n    ]\n  ]});\n}\n\n// === EVENT: date libre ===\nelse if (cmd === 'event' && step === 'ask_when') {\n  const now = new Date();\n  let targetDate = null;\n  \n  const jourMap = {\n    'lundi': 1, 'mardi': 2, 'mercredi': 3, 'jeudi': 4,\n    'vendredi': 5, 'samedi': 6, 'dimanche': 0,\n    'demain': -1, 'aujourd': -2\n  };\n  \n  const lower = freeText.toLowerCase();\n  let jour = null;\n  for (const [k, v] of Object.entries(jourMap)) {\n    if (lower.includes(k)) { jour = { key: k, val: v }; break; }\n  }\n  \n  const heureMatch = lower.match(/(\\d{1,2})[h:](\\d{0,2})/);\n  let heure = 9, minutes = 0;\n  if (heureMatch) {\n    heure = parseInt(heureMatch[1]);\n    minutes = heureMatch[2] ? parseInt(heureMatch[2]) : 0;\n  }\n  \n  if (jour) {\n    targetDate = new Date();\n    if (jour.val === -1) {\n      targetDate.setDate(now.getDate() + 1);\n    } else if (jour.val === -2) {\n      // aujourd'hui\n    } else {\n      const currentDay = now.getDay();\n      let daysAhead = jour.val - currentDay;\n      if (daysAhead <= 0) daysAhead += 7;\n      targetDate.setDate(now.getDate() + daysAhead);\n    }\n    targetDate.setHours(heure, minutes, 0, 0);\n  }\n  \n  if (targetDate) {\n    chatState.data.startTime = targetDate.toISOString();\n    const endTime = new Date(targetDate.getTime() + (chatState.data.durationMin || 60) * 60000);\n    chatState.data.endTime = endTime.toISOString();\n    chatState.updated_at = new Date().toISOString();\n    \n    if (chatState.data.horizon === 'H2-Croissance') {\n      chatState.step = 'ask_ddf';\n      text = '📌 Définition du Fini (DDF) ?\\n(Tape ta réponse ou clique Passer)';\n      replyMarkup = JSON.stringify({ inline_keyboard: [[{ text: '⏭️ Passer', callback_data: 'event_ddf|skip' }]] });\n    } else {\n      chatState.step = 'confirm';\n      const d = chatState.data;\n      const dateStr = targetDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });\n      const timeStr = targetDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });\n      text = `✅ <b>Récapitulatif :</b>\\n\\n${d.emoji} ${d.label} - ${d.title}\\n📅 ${dateStr}, ${timeStr}\\n⏱️ ${d.durationMin} min`;\n      replyMarkup = JSON.stringify({ inline_keyboard: [\n        [{ text: '✅ Confirmer', callback_data: 'event_confirm' }, { text: '❌ Annuler', callback_data: 'event_cancel' }]\n      ]});\n    }\n  } else {\n    text = '⚠️ Je n\\'ai pas compris la date. Essaie : \"samedi 9h\", \"demain 20h\", \"lundi 14h30\"';\n  }\n}\n\n// === EVENT: DDF libre ===\nelse if (cmd === 'event' && step === 'ask_ddf') {\n  chatState.data.ddf = freeText;\n  chatState.step = 'confirm';\n  chatState.updated_at = new Date().toISOString();\n  \n  const d = chatState.data;\n  const dateStr = new Date(d.startTime).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });\n  const timeStr = new Date(d.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });\n  text = `✅ <b>Récapitulatif :</b>\\n\\n${d.emoji} ${d.label} - ${d.title}\\n📅 ${dateStr}, ${timeStr}\\n⏱️ ${d.durationMin} min\\n📌 DDF : ${d.ddf}`;\n  replyMarkup = JSON.stringify({ inline_keyboard: [\n    [{ text: '✅ Confirmer', callback_data: 'event_confirm' }, { text: '❌ Annuler', callback_data: 'event_cancel' }]\n  ]});\n}\n\n// === AUDIT: activité libre ===\nelse if (cmd === 'audit' && step === 'ask_activity') {\n  chatState.data.activity = freeText;\n  chatState.step = 'ask_category';\n  chatState.updated_at = new Date().toISOString();\n  \n  text = `📂 <b>Catégorie ?</b>\\n\\n(Aide au classement automatique)`;\n  replyMarkup = JSON.stringify({ inline_keyboard: [\n    [\n      { text: '🟢 Santé', callback_data: 'audit_cat|sante' },\n      { text: '⚫ Finance/Admin', callback_data: 'audit_cat|admin' },\n      { text: '🟡 Famille', callback_data: 'audit_cat|famille' }\n    ],\n    [\n      { text: '🔴 Travail', callback_data: 'audit_cat|travail' },\n      { text: '🔵 Projet perso', callback_data: 'audit_cat|projet' },\n      { text: '🟣 Loisir/Tech', callback_data: 'audit_cat|loisir' }\n    ]\n  ]});\n}\n\nelse {\n  text = '⚠️ Commande expirée ou non reconnue. Tape /aide.';\n  delete state[String(chatId)];\n}\n\nreturn [{ json: { chatId, text, parse_mode: 'HTML', replyMarkup, victoire, healthLog, gcalAction, gcalParams } }];"
+      },
+      "id": "1658c902-271c-4308-9cc3-b7f06424eac8",
+      "name": "Handle State Continue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === UNKNOWN COMMAND / TEXT ===\nconst chatId = $input.first().json.chatId;\nconst text = '🤔 Commande non reconnue. Tape /aide pour voir les commandes disponibles.';\nreturn [{ json: { chatId, text, parse_mode: 'HTML' } }];"
+      },
+      "id": "a7d705d6-606a-495d-9043-a6f2dd865440",
+      "name": "Handle Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1712
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "424c145f-0018-4d67-b8a4-1c5e4169f80c",
+      "name": "Send Aide",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        304,
+        0
+      ],
+      "webhookId": "be7b6f95-8929-4959-869c-1bc77c337c37",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "ab3806ff-e1fa-476d-a80b-c517e0645232",
+      "name": "Send Jour",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        160
+      ],
+      "webhookId": "edc24a0f-9b5c-471d-8afb-d52610634e45",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "dbd22321-b1f9-4632-bea4-53061c54d5bd",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        816,
+        880
+      ],
+      "webhookId": "1fd54147-9ac6-4a62-82bd-456938dd0ca7",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "59d495a3-3bb7-41aa-808e-0065eb89a24c",
+      "name": "Send Callback Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        1312
+      ],
+      "webhookId": "94d0d534-e721-420c-afb5-a06e5c9d353c",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "fc980ae5-6f3d-48e2-99ed-a979fb00eddf",
+      "name": "Send State Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        1504
+      ],
+      "webhookId": "097057ba-33c0-4e8d-acbf-a6902f595180",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "0820fbde-6eef-4bdd-b143-04588664e281",
+      "name": "Send Bilan",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        1152
+      ],
+      "webhookId": "19044f02-1d13-4a60-af5c-4febfe835f8f",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f9f514e-a66d-8162-958e-cbec78e18130",
+          "mode": "list",
+          "cachedResultName": "🏆 Victoires",
+          "cachedResultUrl": "https://www.notion.so/2f9f514ea66d8162958ecbec78e18130"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{ $json.victoire.title }}"
+            },
+            {
+              "key": "Type|select",
+              "selectValue": "={{ $json.victoire.type }}"
+            },
+            {
+              "key": "Horizon|select",
+              "selectValue": "={{ $json.victoire.horizon }}"
+            },
+            {
+              "key": "Points|number",
+              "numberValue": "={{ $json.victoire.points }}"
+            },
+            {
+              "key": "Date|date",
+              "date": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e1f50493-1fe0-4fc0-af89-8af18c4e37d1",
+      "name": "Notion Create Victoire",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        432,
+        480
+      ],
+      "executeOnce": false,
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f9f514e-a66d-81c0-8544-dc59032cf075",
+          "mode": "list",
+          "cachedResultName": "Santé Log",
+          "cachedResultUrl": "https://www.notion.so/2f9f514ea66d81c08544dc59032cf075"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Nom|title",
+              "title": "={{ $json.healthLog.nom }}"
+            },
+            {
+              "key": "Métrique|select",
+              "selectValue": "={{ $json.healthLog.metrique }}"
+            },
+            {
+              "key": "Valeur|number",
+              "numberValue": "={{ $json.healthLog.valeur }}"
+            },
+            {
+              "key": "Unité|rich_text",
+              "textContent": "={{ $json.healthLog.unite }}"
+            },
+            {
+              "key": "Date|date",
+              "date": "={{ $json.healthLog.date }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "84e8ed3c-17e2-4d16-986e-527737570a94",
+      "name": "Notion Create Health Log",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        656
+      ],
+      "executeOnce": false,
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "antoinestarellas@gmail.com",
+          "mode": "list",
+          "cachedResultName": "antoinestarellas@gmail.com"
+        },
+        "start": "={{ $json.gcalParams ? $json.gcalParams.start : '' }}",
+        "end": "={{ $json.gcalParams ? $json.gcalParams.end : '' }}",
+        "additionalFields": {
+          "description": "={{ $json.gcalParams ? $json.gcalParams.description : '' }}",
+          "summary": "={{ $json.gcalParams ? $json.gcalParams.summary : '' }}"
+        }
+      },
+      "id": "42dfec60-5a26-49e8-9bec-66724022f799",
+      "name": "GCal Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        304,
+        1712
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "yVJUoO2aQYO2Bep4",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f9f514e-a66d-81c0-8544-dc59032cf075",
+          "mode": "list",
+          "cachedResultName": "Santé Log",
+          "cachedResultUrl": "https://www.notion.so/2f9f514ea66d81c08544dc59032cf075"
+        },
+        "filterType": "json",
+        "filterJson": "={\n  \"and\": [\n    { \"property\": \"Métrique\", \"select\": { \"equals\": \"Eau\" } },\n    { \"property\": \"Date\", \"date\": { \"equals\": \"{{ $now.format('yyyy-MM-dd') }}\" } }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        112,
+        864
+      ],
+      "id": "7077e9dc-76d3-4b5c-b09f-62641151c54c",
+      "name": "Get many database pages",
+      "alwaysOutputData": true,
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse & Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Route": {
+      "main": [
+        [
+          {
+            "node": "Route Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Command": {
+      "main": [
+        [
+          {
+            "node": "Handle /aide",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GCal Get Today",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle /event Init",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle /audit Init",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle /sport",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle /poids",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get many database pages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle /victoire Init",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GCal Get Week",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle State Continue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Unknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle /aide": {
+      "main": [
+        [
+          {
+            "node": "Send Aide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Get Today": {
+      "main": [
+        [
+          {
+            "node": "Format /jour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format /jour": {
+      "main": [
+        [
+          {
+            "node": "Send Jour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle /event Init": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle /audit Init": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle /sport": {
+      "main": [
+        [
+          {
+            "node": "Notion Create Victoire",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion Create Health Log",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle /poids": {
+      "main": [
+        [
+          {
+            "node": "Notion Create Health Log",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle /eau": {
+      "main": [
+        [
+          {
+            "node": "Notion Create Health Log",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle /victoire Init": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Get Week": {
+      "main": [
+        [
+          {
+            "node": "Format /bilan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format /bilan": {
+      "main": [
+        [
+          {
+            "node": "Send Bilan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Callback": {
+      "main": [
+        [
+          {
+            "node": "Notion Create Victoire",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Callback Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle State Continue": {
+      "main": [
+        [
+          {
+            "node": "Send State Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Unknown": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages": {
+      "main": [
+        [
+          {
+            "node": "Handle /eau",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "de7fae9c-7cfc-405e-95fe-9f3b0191cf8a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fde66970f8fae7d6c70a3d4ec22bd5678e9acc066830abeb8a10403dc85684c9"
+  },
+  "id": "l8zaRP-_o7xlk4XOgHgZR",
+  "tags": [
+    {
+      "updatedAt": "2026-02-13T08:46:12.388Z",
+      "createdAt": "2026-02-13T08:46:12.388Z",
+      "id": "RmubbC5mvcZAc6gV",
+      "name": "Horizons v2.1"
+    }
+  ]
+}

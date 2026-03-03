@@ -1,0 +1,161 @@
+{
+  "name": "WF4 — GCal Write Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "google-calendar-create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1707fc62-bb3c-4d9e-b6cf-4133a06ff082",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        0
+      ],
+      "webhookId": "gcal-write-v2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nconst titre = body.titre || 'Événement sans titre';\nconst debut = new Date(body.debut);\nconst duree = body.duree || 60;\nconst fin = new Date(debut.getTime() + duree * 60000);\n\nreturn [{\n  json: {\n    titre: titre,\n    debut: debut.toISOString(),\n    fin: fin.toISOString(),\n    colorId: String(body.colorId || '1'),\n    description: body.description || '',\n    calendarId: body.calendarId || 'primary'\n  }\n}];"
+      },
+      "id": "630b707b-ed77-4254-8020-cfa7c02ece00",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "antoinestarellas@gmail.com",
+          "mode": "list",
+          "cachedResultName": "antoinestarellas@gmail.com"
+        },
+        "start": "={{ $json.debut }}",
+        "end": "={{ $json.fin }}",
+        "additionalFields": {
+          "description": "={{ $json.description }}",
+          "summary": "={{ $json.titre }}"
+        }
+      },
+      "id": "1228f8bc-c7f6-4337-bf4f-6379042f9864",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        464,
+        0
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "yVJUoO2aQYO2Bep4",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ev = $input.first().json;\nreturn [{\n  json: {\n    success: true,\n    message: 'Événement créé avec succès',\n    eventId: ev.id || '',\n    eventLink: ev.htmlLink || '',\n    titre: ev.summary || '',\n    debut: ev.start?.dateTime || ''\n  }\n}];"
+      },
+      "id": "23125284-0cf4-490b-93e0-d493d1744ee0",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "d74cab90-9af2-4b76-af99-e7525b941caf",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        864,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "9ed7a5f2-0cb9-4e41-ba60-49f0b8fe5892",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fde66970f8fae7d6c70a3d4ec22bd5678e9acc066830abeb8a10403dc85684c9"
+  },
+  "id": "CZqeUmL59kBdpyrWTqBo0",
+  "tags": [
+    {
+      "updatedAt": "2026-02-11T21:34:24.245Z",
+      "createdAt": "2026-02-11T21:34:24.245Z",
+      "id": "FCZDKiD8H5oU8xGE",
+      "name": "Horizons v2.0"
+    }
+  ]
+}

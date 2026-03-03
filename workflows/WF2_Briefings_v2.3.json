@@ -1,0 +1,637 @@
+{
+  "name": "WF2 — Horizons Briefings v2.3 (+ Batch Report)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b9a91603-cc9c-4700-b28d-9ce18a7c64cb",
+      "name": "Cron 6:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        1872,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=48.7167&longitude=1.65&daily=apparent_temperature_max,apparent_temperature_min&timezone=Europe/Paris",
+        "options": {}
+      },
+      "id": "e3afbfc1-1fcd-4ffe-a65c-34a1a2974ee6",
+      "name": "HTTP GET Weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2080,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/everything?q=politique%20OR%20economie%20OR%20faits-divers&language=fr&sortBy=publishedAt&pageSize=3&apiKey=d7929c9f3fc8442eac2d664e5c04f6b7",
+        "options": {}
+      },
+      "id": "13a06c63-4e0f-4ac1-8736-97789376efe9",
+      "name": "HTTP GET News FR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2272,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/everything?q=intelligence%20artificielle%20OR%20IA&language=fr&sortBy=publishedAt&pageSize=3&apiKey=d7929c9f3fc8442eac2d664e5c04f6b7",
+        "options": {}
+      },
+      "id": "10d23863-2941-4cea-a239-b74504dc38da",
+      "name": "HTTP GET News AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2480,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tz = 'Europe/Paris';\nconst now = new Date();\nconst dayName = new Intl.DateTimeFormat('fr-FR', {timeZone: tz, weekday: 'long'}).format(now);\nconst weatherRes = $node['HTTP GET Weather'].json;\nconst tempMax = weatherRes.daily?.apparent_temperature_max?.[0] || 'N/A';\nconst tempMin = weatherRes.daily?.apparent_temperature_min?.[0] || 'N/A';\nlet weatherEmoji = '☀️';\nif (tempMax < 5) weatherEmoji = '❄️';\nelse if (tempMax < 10) weatherEmoji = '🌧️';\nelse if (tempMax < 15) weatherEmoji = '☁️';\nelse if (tempMax > 20) weatherEmoji = '🌞';\nconst weatherStr = `${weatherEmoji} Nogent-le-Roi : ${tempMin}°C → ${tempMax}°C`;\nconst newsFR = $node['HTTP GET News FR'].json.articles || [];\nconst newsAI = $node['HTTP GET News AI'].json.articles || [];\nconst motivations = [\n  '🎯 1% mieux aujourd\\'hui.',\n  '🔥 Petit pas, gros impact.',\n  '🧠 La constance bat la motivation.',\n  '🚀 Fais simple, fais-le.',\n  '💪 H2 = croissance, pas confort.',\n  '⚡ Expert Local t\\'attend.',\n  '🏗️ Construis ton empire, brique par brique.',\n  '🎬 Action > Réflexion.',\n  '🧱 Les fondations d\\'abord, les détails ensuite.'\n];\nconst mot = motivations[Math.floor(Math.random() * motivations.length)];\nreturn [{\n  json: {\n    weatherStr,\n    newsFR,\n    newsAI,\n    mot,\n    dayName\n  }\n}];"
+      },
+      "id": "403ecbe4-d184-40cf-afda-ebbf90229eea",
+      "name": "Code JS : Build Morning Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f9f514ea66d8148-9b4f-000beaef81b4",
+          "mode": "id"
+        },
+        "limit": 25,
+        "options": {}
+      },
+      "id": "a1bf32b5-2212-49f5-8690-283bbb665f5d",
+      "name": "Notion : Query Objectifs",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.1,
+      "position": [
+        2880,
+        896
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "9412b13563fa4b579ee619bf063f6bd9",
+          "mode": "id"
+        },
+        "limit": 10,
+        "options": {}
+      },
+      "id": "38d34507-8cef-4177-97fc-4f560a52ebac",
+      "name": "Notion : Query Batch Results",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.1,
+      "position": [
+        3088,
+        896
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $node['Code JS : Build Morning Data'].json;\nconst objRecords = $node['Notion : Query Objectifs'].json;\nconst batchRecords = $node['Notion : Query Batch Results'].json;\n\n// === HELPERS ===\nfunction extractText(prop) {\n  if (!prop || prop.type !== 'title') return 'Sans titre';\n  return (prop.title || []).map(x => x.plain_text).join('').trim() || 'Sans titre';\n}\nfunction extractSelect(prop) {\n  if (!prop) return '';\n  if (prop.type === 'select') return prop.select?.name || '';\n  if (prop.type === 'status') return prop.status?.name || '';\n  return '';\n}\n\n// === OBJECTIFS H2 ===\nconst objItems = Array.isArray(objRecords) ? objRecords : (objRecords?.results || [objRecords]).filter(r => r && r.properties);\nconst h2_today = [];\nfor (const r of objItems) {\n  const props = r.properties || r;\n  const hz = extractSelect(props['Horizon']) || '';\n  const st = extractSelect(props['Statut']) || '';\n  if (hz.includes('H2') && !st.includes('Terminé') && !st.includes('Abandonné')) {\n    h2_today.push(extractText(props['Objectif']));\n  }\n  if (h2_today.length >= 3) break;\n}\n\n// === BATCH RESULTS (dernière nuit) ===\nconst batchItems = Array.isArray(batchRecords) ? batchRecords : (batchRecords?.results || [batchRecords]).filter(r => r && r.properties);\nconst today = new Date().toISOString().split('T')[0];\nconst batchDone = [];\nconst batchFailed = [];\nlet batchCostTotal = 0;\n\nfor (const r of batchItems) {\n  const props = r.properties || r;\n  \n  // Vérifier tags batch\n  const tags = (props.Tags?.multi_select || []).map(t => t.name.toLowerCase());\n  if (!tags.includes('batch')) continue;\n  \n  const statut = extractSelect(props['Statut']);\n  const nom = extractText(props['Nom'] || props['Name']);\n  const cost = props['Tokens_Cost']?.number || 0;\n  \n  // Vérifier date (dernières 24h)\n  const editedTime = r.last_edited_time || '';\n  if (editedTime && editedTime.startsWith(today)) {\n    if (statut === 'Terminé') {\n      batchDone.push(nom);\n      batchCostTotal += cost;\n    } else if (statut === 'Échec') {\n      batchFailed.push(nom);\n    }\n  }\n}\n\n// === BUILD MESSAGE ===\nlet msg = `☀️ Bonjour Antoine ! (${ctx.dayName.charAt(0).toUpperCase() + ctx.dayName.slice(1)})\\n\\n`;\nmsg += `${ctx.weatherStr}\\n\\n`;\n\n// Section Batch (si résultats cette nuit)\nif (batchDone.length > 0 || batchFailed.length > 0) {\n  msg += `🌙 <b>Batch nocturne :</b>\\n`;\n  if (batchDone.length > 0) {\n    msg += `  ✅ ${batchDone.length} tâche(s) terminée(s)`;\n    if (batchCostTotal > 0) msg += ` (${Math.round(batchCostTotal * 10000) / 10000}€)`;\n    msg += '\\n';\n    batchDone.forEach(b => { msg += `    • ${b.substring(0, 40)}\\n`; });\n  }\n  if (batchFailed.length > 0) {\n    msg += `  ❌ ${batchFailed.length} en échec\\n`;\n    batchFailed.forEach(b => { msg += `    • ${b.substring(0, 40)}\\n`; });\n  }\n  msg += '  📋 /batch report pour le détail\\n\\n';\n}\n\n// Section H2\nif (h2_today.length) {\n  msg += `🔵 <b>H2 d'aujourd'hui :</b>\\n`;\n  h2_today.forEach(b => { msg += `  • ${b}\\n`; });\n  msg += '\\n';\n} else {\n  msg += '📌 Aucun H2 planifié — tu veux en ajouter un ?\\n\\n';\n}\n\n// Section News FR\nif (ctx.newsFR.length) {\n  msg += `📰 <b>Actus FR</b>\\n`;\n  ctx.newsFR.slice(0, 3).forEach((article, idx) => {\n    const title = (article.title || '').substring(0, 50);\n    msg += `${idx + 1}. ${title}\\n`;\n  });\n  msg += '\\n';\n}\n\n// Section News AI\nif (ctx.newsAI.length) {\n  msg += `🤖 <b>IA & Tech</b>\\n`;\n  ctx.newsAI.slice(0, 3).forEach((article, idx) => {\n    const title = (article.title || '').substring(0, 50);\n    msg += `${idx + 1}. ${title}\\n`;\n  });\n  msg += '\\n';\n}\n\nmsg += ctx.mot;\n\nreturn [{ json: { chatId: 8572640484, text: msg.slice(0, 4096), parse_mode: 'HTML' } }];"
+      },
+      "id": "62369402-534d-4272-8a58-b85fc05d2b5f",
+      "name": "Code JS : Format Morning Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8572640484",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "f0b1c031-e162-4387-8365-a74af694f176",
+      "name": "Telegram Send Morning",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3504,
+        896
+      ],
+      "webhookId": "b1856835-343d-47ba-8c7b-4ff9337c7209",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 12 * * *"
+            }
+          ]
+        }
+      },
+      "id": "122037ad-4b62-40aa-aee5-30d662fafe82",
+      "name": "Cron 12:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        1872,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f9f514ea66d8148-9b4f-000beaef81b4",
+          "mode": "id"
+        },
+        "limit": 15,
+        "options": {}
+      },
+      "id": "05edf3d6-33c6-409e-a3b0-8a02ef838ef0",
+      "name": "Notion : Query H1",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.1,
+      "position": [
+        2128,
+        1168
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst res = items.map(i => i.json);\n\nfunction extractText(prop) {\n  if (!prop || prop.type !== 'title') return 'Tâche';\n  return (prop.title || []).map(x => x.plain_text).join('').trim() || 'Tâche';\n}\nfunction extractSelect(prop) {\n  if (!prop) return '';\n  if (prop.type === 'select') return prop.select?.name || '';\n  if (prop.type === 'status') return prop.status?.name || '';\n  return '';\n}\n\nlet msg = '⏰ <b>Pause déj</b> : comment tu avances ?\\n\\n';\n\nconst h1Items = [];\nfor (const r of res) {\n  const props = r.properties || r;\n  const hz = extractSelect(props['Horizon']) || '';\n  const st = extractSelect(props['Statut']) || '';\n  if (hz.includes('H1') && !st.includes('Terminé')) {\n    h1Items.push(extractText(props['Objectif']));\n  }\n  if (h1Items.length >= 3) break;\n}\n\nif (h1Items.length) {\n  msg += '🚀 H1 en cours :\\n';\n  h1Items.forEach(t => { msg += `  • ${t}\\n`; });\n} else {\n  msg += '✅ Tous tes H1 sont couverts !\\n';\n}\nmsg += '\\n💪 Après manger : retour en H2 ?';\nreturn [{ json: { chatId: 8572640484, text: msg.slice(0, 400), parse_mode: 'HTML' } }];"
+      },
+      "id": "ddc5d38c-2674-48b3-a8b4-fa51297c267e",
+      "name": "Code JS : Format Midday",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8572640484",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "5da8a350-f2de-48ec-9093-6e2efa88b4e0",
+      "name": "Telegram Send Midday",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2624,
+        1168
+      ],
+      "webhookId": "3ddc9971-89e5-4cb1-ae82-aadd0bf3e07f",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "5e26e53d-55e4-4dbd-b80f-9664ace4f8c8",
+      "name": "Cron 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        1872,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f9f514e-a66d-816d-8457-000bf6152991",
+          "mode": "id"
+        },
+        "limit": 20,
+        "options": {}
+      },
+      "id": "48f36c94-a285-4667-93ff-077b868a6ea7",
+      "name": "Notion : Query Victoires",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.1,
+      "position": [
+        2128,
+        1408
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst res = items.map(i => i.json);\n\n// Filtrer victoires d'aujourd'hui\nconst today = new Date().toISOString().split('T')[0];\nconst todayVictoires = res.filter(r => {\n  const props = r.properties || r;\n  const dateVal = props.Date?.date?.start || r.created_time || '';\n  return dateVal.startsWith(today);\n});\n\nconst totalPoints = todayVictoires.reduce((sum, r) => {\n  const props = r.properties || r;\n  return sum + (props.Points?.number || 0);\n}, 0);\n\nlet msg = `📊 <b>Recap du jour</b>\\n\\n`;\nif (todayVictoires.length) {\n  msg += `✅ ${todayVictoires.length} victoire(s) loggée(s)\\n🏆 +${totalPoints} points\\n\\n`;\n} else {\n  msg += 'Pas de victoires loggées aujourd\\'hui.\\n/victoire pour en ajouter une !\\n\\n';\n}\nmsg += '💭 Qu\\'as-tu appris ?\\n🌙 Bonne nuit ! Demain = nouveau jour.';\nreturn [{ json: { chatId: 8572640484, text: msg.slice(0, 400), parse_mode: 'HTML' } }];"
+      },
+      "id": "60aa61ad-a623-4cb2-93a5-f1a356120846",
+      "name": "Code JS : Format Evening",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8572640484",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "4c817c07-0e62-4e17-a7c9-c90d7c4e6448",
+      "name": "Telegram Send Evening",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2624,
+        1408
+      ],
+      "webhookId": "748ecc2a-ed6b-4882-9b5b-5db3d5aa3e5c",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "e54cdd4f-ef7d-45b0-81cb-856b86202fc9",
+      "name": "Cron Sunday 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        1872,
+        1664
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f9f514ea66d8148-9b4f-000beaef81b4",
+          "mode": "id"
+        },
+        "limit": 30,
+        "options": {}
+      },
+      "id": "462a4457-32d7-4abd-8e09-e2d60b3ea8fc",
+      "name": "Notion : Query Objectifs QG",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.1,
+      "position": [
+        2128,
+        1664
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst res = items.map(i => i.json);\n\nfunction extractSelect(prop) {\n  if (!prop) return '';\n  if (prop.type === 'select') return prop.select?.name || '';\n  if (prop.type === 'status') return prop.status?.name || '';\n  return '';\n}\n\nconst h2Done = res.filter(r => {\n  const props = r.properties || r;\n  const hz = extractSelect(props['Horizon']) || '';\n  const st = extractSelect(props['Statut']) || '';\n  return hz.includes('H2') && st.includes('Terminé');\n}).length;\n\nconst h2Total = res.filter(r => {\n  const props = r.properties || r;\n  const hz = extractSelect(props['Horizon']) || '';\n  return hz.includes('H2');\n}).length;\n\nlet msg = `🎯 <b>QG STRATÉGIQUE — Semaine</b>\\n\\n📊 Objectifs H2 :\\n   ${h2Done}/${h2Total} complétés\\n\\n`;\nif (h2Done >= 2) msg += `🏆 Excellente semaine !\\n`;\nelse if (h2Done >= 1) msg += `✅ Bon progrès.\\n`;\nelse msg += `⚠️ À accélérer.\\n`;\nmsg += `\\n💡 Réflexions pour la suite ?\\n🎬 Qu'est-ce qui a marché ? Qu'est-ce qui a bloqué ?\\n\\n`;\nmsg += `📌 Rappel : Un bloc 🔵 peut être DÉPLACÉ, jamais ANNULÉ. 💪`;\nreturn [{ json: { chatId: 8572640484, text: msg.slice(0, 500), parse_mode: 'HTML' } }];"
+      },
+      "id": "21d3d2c8-9b27-4289-86fe-c96b5b4860e9",
+      "name": "Code JS : Format QG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        1664
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8572640484",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode || 'HTML' }}"
+        }
+      },
+      "id": "d33d3063-f174-4e14-8b8e-0dcaa64185ee",
+      "name": "Telegram Send QG",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2624,
+        1664
+      ],
+      "webhookId": "51ac4367-edbe-46dd-8213-e076d3b68278",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron 6:30": {
+      "main": [
+        [
+          {
+            "node": "HTTP GET Weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP GET Weather": {
+      "main": [
+        [
+          {
+            "node": "HTTP GET News FR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP GET News FR": {
+      "main": [
+        [
+          {
+            "node": "HTTP GET News AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP GET News AI": {
+      "main": [
+        [
+          {
+            "node": "Code JS : Build Morning Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code JS : Build Morning Data": {
+      "main": [
+        [
+          {
+            "node": "Notion : Query Objectifs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion : Query Objectifs": {
+      "main": [
+        [
+          {
+            "node": "Notion : Query Batch Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion : Query Batch Results": {
+      "main": [
+        [
+          {
+            "node": "Code JS : Format Morning Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code JS : Format Morning Message": {
+      "main": [
+        [
+          {
+            "node": "Telegram Send Morning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron 12:30": {
+      "main": [
+        [
+          {
+            "node": "Notion : Query H1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion : Query H1": {
+      "main": [
+        [
+          {
+            "node": "Code JS : Format Midday",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code JS : Format Midday": {
+      "main": [
+        [
+          {
+            "node": "Telegram Send Midday",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron 18:00": {
+      "main": [
+        [
+          {
+            "node": "Notion : Query Victoires",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion : Query Victoires": {
+      "main": [
+        [
+          {
+            "node": "Code JS : Format Evening",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code JS : Format Evening": {
+      "main": [
+        [
+          {
+            "node": "Telegram Send Evening",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Sunday 18:00": {
+      "main": [
+        [
+          {
+            "node": "Notion : Query Objectifs QG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion : Query Objectifs QG": {
+      "main": [
+        [
+          {
+            "node": "Code JS : Format QG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code JS : Format QG": {
+      "main": [
+        [
+          {
+            "node": "Telegram Send QG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "8ccc842b-00f7-48ce-83bf-e9e0e5e21847",
+  "meta": {
+    "instanceId": "fde66970f8fae7d6c70a3d4ec22bd5678e9acc066830abeb8a10403dc85684c9"
+  },
+  "id": "1tQf0m1R-0oi0iIcYNjgD",
+  "tags": [
+    {
+      "updatedAt": "2026-02-11T21:34:24.245Z",
+      "createdAt": "2026-02-11T21:34:24.245Z",
+      "id": "FCZDKiD8H5oU8xGE",
+      "name": "Horizons v2.0"
+    },
+    {
+      "updatedAt": "2026-02-27T15:09:25.187Z",
+      "createdAt": "2026-02-27T15:09:25.187Z",
+      "id": "pYGEMtjEmj19pOya",
+      "name": "Briefings"
+    }
+  ]
+}

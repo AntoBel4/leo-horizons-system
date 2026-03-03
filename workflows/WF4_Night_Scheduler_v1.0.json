@@ -1,0 +1,642 @@
+{
+  "name": "WF4 — Night Scheduler Batch v1.0",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "e3a7b736-337e-4034-b5db-bb98da376fe1",
+      "name": "Cron 02:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1248,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "9412b13563fa4b579ee619bf063f6bd9",
+          "mode": "id"
+        },
+        "limit": 20,
+        "options": {}
+      },
+      "id": "33989aea-9a75-4053-a877-13368db46f47",
+      "name": "Notion: Get All Tâches",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.1,
+      "position": [
+        -1040,
+        928
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// FILTER BATCH TASKS + INIT BUDGET\n// ============================================================\n// Filtre les tâches batch en statut 'À faire'\n// Initialise le compteur de budget nuit\n// ============================================================\n\nconst items = $input.all();\nconst batchTasks = [];\n\nfor (const item of items) {\n  const props = item.json.properties || item.json;\n  \n  // Extraire le statut\n  let statut = '';\n  if (props.Statut?.select?.name) statut = props.Statut.select.name;\n  else if (props.Statut?.status?.name) statut = props.Statut.status.name;\n  \n  // Extraire les tags\n  let tags = [];\n  if (props.Tags?.multi_select) tags = props.Tags.multi_select.map(t => t.name.toLowerCase());\n  \n  // Filtrer : batch + À faire\n  if (tags.includes('batch') && statut === '📋 À faire') {\n    // Extraire les propriétés utiles\n    let nom = 'Sans titre';\n    if (props.Nom?.title) nom = props.Nom.title.map(t => t.plain_text).join('');\n    else if (props.Name?.title) nom = props.Name.title.map(t => t.plain_text).join('');\n    \n    let batchType = 'Contenu';\n    if (props.Batch_Type?.select?.name) batchType = props.Batch_Type.select.name;\n    \n    let projetCible = '';\n    if (props.Projet_Cible?.select?.name) projetCible = props.Projet_Cible.select.name;\n    \n    let priorite = 'Moyenne';\n    if (props.Priorité?.select?.name) priorite = props.Priorité.select.name;\n    // Alternative sans accent\n    if (props.Priorite?.select?.name) priorite = props.Priorite.select.name;\n    \n    batchTasks.push({\n      json: {\n        pageId: item.json.id,\n        nom,\n        batchType,\n        projetCible,\n        priorite,\n        url: item.json.url || ''\n      }\n    });\n  }\n}\n\n// Trier par priorité (Haute > Moyenne > Basse)\nconst prioOrder = { 'Haute': 0, 'Moyenne': 1, 'Basse': 2 };\nbatchTasks.sort((a, b) => (prioOrder[a.json.priorite] || 1) - (prioOrder[b.json.priorite] || 1));\n\n// Init budget dans static data\nconst staticData = $getWorkflowStaticData('global');\nstaticData.night_budget = 0;\nstaticData.night_results = [];\nstaticData.night_start = new Date().toISOString();\n\nif (batchTasks.length === 0) {\n  return [{ json: { empty: true, count: 0 } }];\n}\n\nreturn batchTasks;"
+      },
+      "id": "a807ff61-1688-41b0-8785-820ab90ee93e",
+      "name": "Code: Filter Batch + Init Budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.empty }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "38baa4cd-d11f-4d93-aa15-91e9c9fc3cc4",
+      "name": "IF: Queue Not Empty",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "d21cf92c-45c3-46ec-b03d-d53dd6f1fb08",
+      "name": "SplitInBatches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -320,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// CHECK BUDGET + PREPARE TASK\n// ============================================================\nconst staticData = $getWorkflowStaticData('global');\nconst budget = staticData.night_budget || 0;\nconst BUDGET_MAX = 0.30;\n\nconst item = $input.first().json;\n\nif (budget >= BUDGET_MAX) {\n  // Budget épuisé — skip cette tâche\n  return [{ json: { ...item, budgetExceeded: true, currentBudget: budget } }];\n}\n\n// Préparer les paramètres selon le type\nlet systemPrompt = '';\nlet userPrompt = '';\n\nif (item.batchType === 'Contenu') {\n  const toneMap = {\n    'expert-local': 'Ton professionnel mais accessible, ciblant artisans et commerçants français. Tutoiement.',\n    'rentrerdesmandats': 'Ton expert immobilier digital, professionnel, vouvoiement. Cible: agents immobiliers.',\n    'studio': 'Ton créatif et tech, présentant des services digitaux. Tutoiement.',\n    'blog': 'Ton personnel, partage d\\'expérience tech et entrepreneuriat. Tutoiement.',\n    'kitrgpd': 'Ton juridique vulgarisé, RGPD simplifié pour PME. Vouvoiement.',\n    'clicsimple': 'Ton pédagogique et patient, ciblant seniors débutants en informatique. Vouvoiement.'\n  };\n  const tone = toneMap[item.projetCible] || 'Ton professionnel en français.';\n  \n  systemPrompt = `Tu es un rédacteur web SEO expert francophone. ${tone} Écris du contenu optimisé SEO avec des titres H2/H3, des paragraphes courts, et un appel à l'action en fin d'article. Le contenu doit être original, utile et engageant.`;\n  userPrompt = item.nom;\n}\n\nreturn [{ json: { ...item, budgetExceeded: false, currentBudget: budget, systemPrompt, userPrompt } }];"
+      },
+      "id": "ee4a7196-a121-4fd1-bccf-671a659d083b",
+      "name": "Code: Check Budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.budgetExceeded }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "41c65611-330d-4331-884c-2f7dbf7e5c65",
+      "name": "IF: Budget OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        176,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "combinator": "and"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.batchType }}",
+                    "rightValue": "Contenu",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "combinator": "and"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.batchType }}",
+                    "rightValue": "Audit",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "combinator": "and"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.batchType }}",
+                    "rightValue": "Maintenance",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "238699fb-76d1-44ed-ac72-96bbec5f39d2",
+      "name": "Switch: Route by Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        416,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "HTTP-Referer",
+              "value": "https://coaching.estarellas.online"
+            },
+            {
+              "name": "X-Title",
+              "value": "Horizons Batch"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"anthropic/claude-haiku-4-5\",\n  \"max_tokens\": 2000,\n  \"messages\": [\n    { \"role\": \"system\", \"content\": {{ JSON.stringify($json.systemPrompt) }} },\n    { \"role\": \"user\", \"content\": {{ JSON.stringify($json.userPrompt) }} }\n  ]\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "9d1757f3-ac8d-4695-921c-fbb743d321a1",
+      "name": "HTTP: OpenRouter (Contenu)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        688,
+        688
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aKFKWpY9EovbQnYp",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// AUDIT: Ping tous les webhooks n8n\n// ============================================================\nconst item = $input.first().json;\nconst webhooks = [\n  { name: 'WF1 Bot Telegram', url: 'https://coaching.estarellas.online/webhook/horizons-bot-v2' },\n  { name: 'WF3 GCal Lecture', url: 'https://coaching.estarellas.online/webhook/gcal-leo' },\n  { name: 'WF4 GCal Écriture', url: 'https://coaching.estarellas.online/webhook/google-calendar-create' }\n];\n\nconst results = [];\nfor (const wh of webhooks) {\n  try {\n    const start = Date.now();\n    // On fait un simple HEAD/GET — le webhook retournera probablement une erreur\n    // mais un code HTTP confirme que n8n répond\n    const resp = await fetch(wh.url, { method: 'GET', signal: AbortSignal.timeout(10000) });\n    const latency = Date.now() - start;\n    results.push(`✅ ${wh.name}: HTTP ${resp.status} (${latency}ms)`);\n  } catch (err) {\n    results.push(`❌ ${wh.name}: ${err.message}`);\n  }\n}\n\nconst resultText = `🔍 AUDIT WEBHOOKS — ${new Date().toLocaleDateString('fr-FR')}\\n\\n${results.join('\\n')}`;\n\nreturn [{ json: { ...item, batchResult: resultText, taskCost: 0 } }];"
+      },
+      "id": "8e8f9210-41b5-4482-b520-4ad40c4c581a",
+      "name": "Code: Audit Webhooks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// MAINTENANCE: Vérifications VPS (lecture seule)\n// ============================================================\nconst item = $input.first().json;\n\n// En mode n8n, on ne peut pas SSH directement\n// On génère un rapport basique depuis ce qu'on peut observer\nconst now = new Date();\nconst resultText = `🔧 MAINTENANCE CHECK — ${now.toLocaleDateString('fr-FR')}\\n\\n` +\n  `⚠️ Checks VPS nécessitent accès SSH.\\n` +\n  `Recommandation: Exécuter manuellement sur le VPS:\\n` +\n  `  docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Size}}'\\n` +\n  `  df -h /\\n` +\n  `  docker system df\\n\\n` +\n  `📋 Status: rapport partiel — checks manuels recommandés.`;\n\nreturn [{ json: { ...item, batchResult: resultText, taskCost: 0 } }];"
+      },
+      "id": "ba764f78-29a4-4b1e-9637-d80cdd3cd429",
+      "name": "Code: Maintenance Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PROCESS RESULT — Format + increment budget\n// ============================================================\nconst staticData = $getWorkflowStaticData('global');\nconst item = $input.first().json;\n\nlet batchResult = '';\nlet taskCost = 0;\n\nif (item.batchType === 'Contenu') {\n  // Résultat OpenRouter\n  const choices = item.choices || [];\n  if (choices.length > 0) {\n    batchResult = choices[0].message?.content || 'Erreur: pas de contenu généré';\n  } else {\n    batchResult = 'Erreur: réponse OpenRouter vide';\n  }\n  // Estimer le coût (Haiku: ~0.25$/M input, ~1.25$/M output)\n  const usage = item.usage || {};\n  const inputTokens = usage.prompt_tokens || 500;\n  const outputTokens = usage.completion_tokens || 1500;\n  taskCost = (inputTokens * 0.00000025 + outputTokens * 0.00000125) * 1.1; // +10% marge\n  taskCost = Math.round(taskCost * 10000) / 10000; // Arrondir à 4 décimales\n} else {\n  // Audit ou Maintenance — résultat déjà formaté en amont\n  batchResult = item.batchResult || 'Pas de résultat';\n  taskCost = item.taskCost || 0;\n}\n\n// Incrémenter le budget\nstaticData.night_budget = (staticData.night_budget || 0) + taskCost;\n\n// Stocker le résultat pour le rapport final\nif (!staticData.night_results) staticData.night_results = [];\nstaticData.night_results.push({\n  nom: item.nom,\n  type: item.batchType,\n  projet: item.projetCible,\n  cost: taskCost,\n  success: !batchResult.startsWith('Erreur')\n});\n\nreturn [{ json: {\n  pageId: item.pageId,\n  batchResult: batchResult.substring(0, 2000), // Limite Notion rich text\n  taskCost,\n  totalBudget: staticData.night_budget,\n  statut: batchResult.startsWith('Erreur') ? '❌ Échec' : '✅ Fait'\n}}];"
+      },
+      "id": "f944bd83-c4db-4c40-bdb8-3d9389fe9585",
+      "name": "Code: Process Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "fdd44129-fc29-4224-9c8e-320f55ea392a",
+          "mode": "list",
+          "cachedResultName": "✅ Tâches",
+          "cachedResultUrl": "https://www.notion.so/fdd44129fc2942249c8e320f55ea392a"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Statut|select",
+              "selectValue": "={{ $json.statut }}"
+            },
+            {
+              "key": "Batch_Resultat|richText",
+              "textContent": "={{ $json.batchResult }}"
+            },
+            {
+              "key": "Tokens_Cost|number",
+              "numberValue": "={{ $json.taskCost }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "458b597c-2698-48b7-8ad0-39ee0f3d1252",
+      "name": "Notion: Update Task",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        848
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "2xlBSkDl15LKSgkC",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// BUILD SUMMARY — Rapport nocturne pour Telegram\n// ============================================================\nconst staticData = $getWorkflowStaticData('global');\nconst results = staticData.night_results || [];\nconst totalBudget = staticData.night_budget || 0;\nconst startTime = staticData.night_start || new Date().toISOString();\n\nif (results.length === 0) {\n  return [{ json: { chatId: '8572640484', text: '🌙 Batch nocturne : file vide, rien à traiter.', sendReport: false } }];\n}\n\nconst success = results.filter(r => r.success).length;\nconst failed = results.filter(r => !r.success).length;\n\nlet msg = `🌙 <b>RAPPORT BATCH NOCTURNE</b>\\n`;\nmsg += `📅 ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })}\\n\\n`;\n\nmsg += `📊 <b>Résumé :</b>\\n`;\nmsg += `  ✅ Réussies : ${success}\\n`;\nif (failed > 0) msg += `  ❌ Échouées : ${failed}\\n`;\nmsg += `  💰 Coût total : ${Math.round(totalBudget * 10000) / 10000}€ / 0.30€\\n\\n`;\n\nmsg += `📋 <b>Détail :</b>\\n`;\nfor (const r of results) {\n  const icon = r.success ? '✅' : '❌';\n  const typeIcon = r.type === 'Contenu' ? '📝' : r.type === 'Audit' ? '🔍' : '🔧';\n  msg += `  ${icon} ${typeIcon} ${r.nom.substring(0, 40)}${r.projet ? ' (' + r.projet + ')' : ''}\\n`;\n}\n\nif (totalBudget >= 0.30) {\n  msg += `\\n⚠️ Budget nuit atteint (${Math.round(totalBudget * 100) / 100}€). Tâches restantes reportées.`;\n}\n\n// Cleanup static data\nstaticData.night_results = [];\nstaticData.night_budget = 0;\n\nreturn [{ json: { chatId: '8572640484', text: msg.slice(0, 4096), parse_mode: 'HTML', sendReport: true } }];"
+      },
+      "id": "ff9e4e6f-a1d8-4e0f-9276-00823d8ea934",
+      "name": "Code: Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        1136
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8572640484",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "e8094237-0673-4cfe-bdbf-634cbf97c38c",
+      "name": "Telegram: Send Night Report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        1136
+      ],
+      "webhookId": "f76bb6e9-615d-4d71-b6e6-b3e11158f3b5",
+      "credentials": {
+        "telegramApi": {
+          "id": "KhWYDTSSLMaxdCBJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Budget dépassé — log et continue vers summary\nconst item = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nif (!staticData.night_results) staticData.night_results = [];\nstaticData.night_results.push({\n  nom: item.nom,\n  type: item.batchType,\n  projet: item.projetCible,\n  cost: 0,\n  success: false,\n  skipped: true\n});\n\nreturn [{ json: item }];"
+      },
+      "id": "b605c761-fc5d-45a1-9d44-a0896a9f6135",
+      "name": "Code: Budget Skip",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// File vide — pas de rapport\nreturn [{ json: { chatId: '8572640484', text: '', sendReport: false } }];"
+      },
+      "id": "15bb18a1-2bc6-450f-b0f1-f78a384aad98",
+      "name": "Code: Empty Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        1088
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron 02:00": {
+      "main": [
+        [
+          {
+            "node": "Notion: Get All Tâches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Get All Tâches": {
+      "main": [
+        [
+          {
+            "node": "Code: Filter Batch + Init Budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Filter Batch + Init Budget": {
+      "main": [
+        [
+          {
+            "node": "IF: Queue Not Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Queue Not Empty": {
+      "main": [
+        [
+          {
+            "node": "SplitInBatches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Empty Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SplitInBatches": {
+      "main": [
+        [
+          {
+            "node": "Code: Build Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Check Budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Check Budget": {
+      "main": [
+        [
+          {
+            "node": "IF: Budget OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Budget OK": {
+      "main": [
+        [
+          {
+            "node": "Switch: Route by Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Budget Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Budget Skip": {
+      "main": [
+        [
+          {
+            "node": "SplitInBatches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Route by Type": {
+      "main": [
+        [
+          {
+            "node": "HTTP: OpenRouter (Contenu)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Audit Webhooks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Maintenance Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Process Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: OpenRouter (Contenu)": {
+      "main": [
+        [
+          {
+            "node": "Code: Process Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Audit Webhooks": {
+      "main": [
+        [
+          {
+            "node": "Code: Process Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Maintenance Check": {
+      "main": [
+        [
+          {
+            "node": "Code: Process Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Process Result": {
+      "main": [
+        [
+          {
+            "node": "Notion: Update Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Update Task": {
+      "main": [
+        [
+          {
+            "node": "SplitInBatches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Build Summary": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Send Night Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "4bbc71a8-1216-4350-b414-fdd729daf2f6",
+  "meta": {
+    "instanceId": "fde66970f8fae7d6c70a3d4ec22bd5678e9acc066830abeb8a10403dc85684c9"
+  },
+  "id": "mHeSW72LFLAu2fNYQBd-d",
+  "tags": [
+    {
+      "updatedAt": "2026-02-27T15:11:51.340Z",
+      "createdAt": "2026-02-27T15:11:51.340Z",
+      "id": "401fkysDxBy8EGym",
+      "name": "Batch"
+    },
+    {
+      "updatedAt": "2026-02-11T21:34:24.245Z",
+      "createdAt": "2026-02-11T21:34:24.245Z",
+      "id": "FCZDKiD8H5oU8xGE",
+      "name": "Horizons v2.0"
+    }
+  ]
+}
