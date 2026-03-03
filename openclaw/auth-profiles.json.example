@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "profiles": {
+    "google:manual": {
+      "type": "token",
+      "provider": "google",
+      "token": "CHANGE_ME_TO_YOUR_GOOGLE_API_KEY"
+    }
+  },
+  "lastGood": {
+    "google": "google:manual"
+  },
+  "usageStats": {}
+}
