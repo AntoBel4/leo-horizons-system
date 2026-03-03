@@ -1,0 +1,32 @@
+# Secrets & credentials (JAMAIS commiter)
+.env
+.env.local
+.env.*.local
+openclaw.json.bak
+auth-profiles.json
+credentials.json
+
+# Données sensibles
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Fichiers temporaires
+temp/
+tmp/
+*.swp
+*.swo
+*.temp
+
+# API keys & tokens (gérées via n8n UI)
+credentials/
+secrets/
+
+# Fichiers système
+.vscode/settings.json
+.idea/
+
+# Backups
+*.backup
+*.bak
