@@ -106,13 +106,13 @@ curl -s https://coaching.estarellas.online/webhook/gcal-leo
 docker ps | grep openclaw
 
 # 2. Vérifier les logs
-docker logs openclaw-leo --tail 50
+docker logs openclaw --tail 50
 
 # 3. Redémarrer
-docker restart openclaw-leo
+docker restart openclaw
 
 # 4. Vérifier le healthcheck
-curl -s https://coaching.estarellas.online/health
+curl -s https://leo.estarellas.online/health
 ```
 
 ### API Notion inaccessible
@@ -171,7 +171,7 @@ docker compose -f docker/docker-compose.yml ps
 docker compose -f docker/docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}"
 
 # 7. Tester les endpoints
-curl -s https://coaching.estarellas.online/health
+curl -s https://leo.estarellas.online/health
 curl -s https://coaching.estarellas.online/webhook/gcal-leo
 ```
 
