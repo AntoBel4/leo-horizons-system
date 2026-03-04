@@ -6,19 +6,17 @@
 #   cp Caddyfile.example Caddyfile
 #   Remplace "leo.estarellas.online" par ton domaine
 #
-# IMPORTANT:
-#   - Utiliser le nom du service Docker (openclaw) et NON localhost/127.0.0.1
-#   - Les conteneurs communiquent via le réseau Docker interne
-#   - Caddy gère automatiquement les certificats TLS (Let's Encrypt)
+# NOTE: Avec network_mode: host, tous les conteneurs partagent
+# le réseau du VPS. On utilise donc 127.0.0.1 (pas un nom de service).
 #
 # ============================================
 
 # Domaine principal - OpenClaw (Leo)
 leo.estarellas.online {
-	reverse_proxy openclaw:18789
+	reverse_proxy 127.0.0.1:18789
 }
 
 # Domaine n8n (optionnel - ajuster selon ton setup)
 # n8n.estarellas.online {
-# 	reverse_proxy n8n:5678
+# 	reverse_proxy 127.0.0.1:5678
 # }

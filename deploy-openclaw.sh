@@ -35,53 +35,38 @@ echo "  OK - Dossier prêt"
 # 3. Arrêter les conteneurs existants
 echo ""
 echo "[3/8] Arrêt des conteneurs existants..."
-docker compose down 2>/dev/null || docker-compose down 2>/dev/null || echo "  Aucun conteneur à arrêter"
+docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+docker stop openclaw caddy 2>/dev/null || true
+docker rm openclaw caddy 2>/dev/null || true
 echo "  OK - Conteneurs arrêtés"
 
 # 4. Écrire le docker-compose.yml
+# NOTE: network_mode: host est REQUIS car OpenClaw écoute toujours
+# sur 127.0.0.1 (codé en dur, la clé "host" dans le JSON est refusée).
+# Avec network_mode: host, le 127.0.0.1 du conteneur = celui du VPS.
 echo ""
 echo "[4/8] Écriture docker-compose.yml..."
 cat > docker-compose.yml << 'EOF'
 services:
   openclaw:
-    image: openclaw/openclaw:latest
+    image: ghcr.io/openclaw/openclaw:latest
     container_name: openclaw
     restart: unless-stopped
-    ports:
-      - "18789:18789"
+    network_mode: host
     environment:
-      - OPENCLAW_PORT=18789
-      - OPENCLAW_HOST=0.0.0.0
-      - OPENCLAW_AUTH_MODE=token
-      - OPENCLAW_LOG_LEVEL=info
       - TZ=Europe/Paris
     volumes:
       - openclaw_config:/home/node/.openclaw
-    networks:
-      - default
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
 
   caddy:
     image: caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+    network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    networks:
-      - default
-    depends_on:
-      - openclaw
 
 volumes:
   openclaw_config:
@@ -91,11 +76,12 @@ EOF
 echo "  OK"
 
 # 5. Écrire le Caddyfile
+# NOTE: Avec network_mode: host, on utilise 127.0.0.1 (pas un nom de service)
 echo ""
 echo "[5/8] Écriture Caddyfile..."
 cat > Caddyfile << 'EOF'
 leo.estarellas.online {
-	reverse_proxy openclaw:18789
+	reverse_proxy 127.0.0.1:18789
 }
 EOF
 echo "  OK"
@@ -125,8 +111,8 @@ echo "  OK - Conteneurs lancés"
 
 # 8. Vérification
 echo ""
-echo "[8/8] Vérification (attente 15s pour le démarrage)..."
-sleep 15
+echo "[8/8] Vérification (attente 20s pour le démarrage)..."
+sleep 20
 
 echo ""
 echo "--- LOGS OPENCLAW (dernières 20 lignes) ---"

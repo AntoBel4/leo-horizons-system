@@ -276,12 +276,14 @@ curl -I http://127.0.0.1:18789
 ```
 
 **Causes fréquentes** :
-1. **Config JSON invalide** : Clés obsolètes (`host`, `agent`) dans `openclaw.json`
+1. **Config JSON invalide** : Clés non reconnues dans `openclaw.json` (ex: `gateway.host`, `agents`)
    → Supprimer le fichier et redémarrer le conteneur
 2. **Permissions (EACCES)** : `chown -R 1000:1000` sur le volume config
-3. **Réseau Docker** : Vérifier `OPENCLAW_HOST=0.0.0.0` dans docker-compose.yml
-4. **Caddyfile** : Utiliser `reverse_proxy openclaw:18789` (pas `localhost`)
+3. **Réseau Docker** : Utiliser `network_mode: host` dans docker-compose.yml
+   (OpenClaw écoute toujours sur 127.0.0.1, pas configurable)
+4. **Caddyfile** : Avec `network_mode: host`, utiliser `reverse_proxy 127.0.0.1:18789`
 5. **Modèle trop lourd** : Passer de Opus à Haiku 4.5 dans l'onglet Agents
+6. **Mauvaise image** : Utiliser `ghcr.io/openclaw/openclaw:latest` (pas `openclaw/openclaw`)
 
 **Guide complet** : [TROUBLESHOOTING-OPENCLAW.md](TROUBLESHOOTING-OPENCLAW.md)
 
