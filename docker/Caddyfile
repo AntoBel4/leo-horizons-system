@@ -16,8 +16,9 @@ coaching.estarellas.online {
 }
 
 # OpenClaw (Leo assistant IA)
+# Note: OpenClaw bind à 127.0.0.1 uniquement, socat proxy expose sur :18790
 leo.estarellas.online {
-    reverse_proxy openclaw:18789
+    reverse_proxy openclaw:18790
 }
 
 # App prospect
