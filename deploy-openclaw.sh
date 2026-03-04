@@ -1,0 +1,175 @@
+#!/bin/bash
+# ============================================
+# Script de déploiement OpenClaw (Leo)
+# ============================================
+# Usage: ssh root@ton-vps-ip 'bash -s' < deploy-openclaw.sh
+#    ou: scp deploy-openclaw.sh root@ton-vps-ip: && ssh root@ton-vps-ip bash deploy-openclaw.sh
+# ============================================
+
+set -e
+
+DOCKER_DIR="${HOME}/n8n-docker"
+VOLUME_PATH="/var/lib/docker/volumes/n8n-docker_openclaw_config/_data"
+
+echo "=========================================="
+echo " DÉPLOIEMENT OPENCLAW (LEO)"
+echo "=========================================="
+
+# 1. Vérifier Docker
+echo ""
+echo "[1/8] Vérification Docker..."
+if ! command -v docker &> /dev/null; then
+    echo "ERREUR: Docker n'est pas installé."
+    echo "Installe-le avec: curl -fsSL https://get.docker.com | sh"
+    exit 1
+fi
+echo "  OK - Docker $(docker --version | cut -d' ' -f3)"
+
+# 2. Créer le dossier si nécessaire
+echo ""
+echo "[2/8] Préparation du dossier ${DOCKER_DIR}..."
+mkdir -p "${DOCKER_DIR}"
+cd "${DOCKER_DIR}"
+echo "  OK - Dossier prêt"
+
+# 3. Arrêter les conteneurs existants
+echo ""
+echo "[3/8] Arrêt des conteneurs existants..."
+docker compose down 2>/dev/null || docker-compose down 2>/dev/null || echo "  Aucun conteneur à arrêter"
+echo "  OK - Conteneurs arrêtés"
+
+# 4. Écrire le docker-compose.yml
+echo ""
+echo "[4/8] Écriture docker-compose.yml..."
+cat > docker-compose.yml << 'EOF'
+services:
+  openclaw:
+    image: openclaw/openclaw:latest
+    container_name: openclaw
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    environment:
+      - OPENCLAW_PORT=18789
+      - OPENCLAW_HOST=0.0.0.0
+      - OPENCLAW_AUTH_MODE=token
+      - OPENCLAW_LOG_LEVEL=info
+      - TZ=Europe/Paris
+    volumes:
+      - openclaw_config:/home/node/.openclaw
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - default
+    depends_on:
+      - openclaw
+
+volumes:
+  openclaw_config:
+  caddy_data:
+  caddy_config:
+EOF
+echo "  OK"
+
+# 5. Écrire le Caddyfile
+echo ""
+echo "[5/8] Écriture Caddyfile..."
+cat > Caddyfile << 'EOF'
+leo.estarellas.online {
+	reverse_proxy openclaw:18789
+}
+EOF
+echo "  OK"
+
+# 6. Nettoyer la config obsolète + permissions
+echo ""
+echo "[6/8] Nettoyage config obsolète et permissions..."
+
+# Créer le dossier du volume s'il n'existe pas encore
+mkdir -p "${VOLUME_PATH}"
+
+# Supprimer l'ancien JSON (Leo en recréera un propre)
+if [ -f "${VOLUME_PATH}/openclaw.json" ]; then
+    echo "  Suppression de l'ancien openclaw.json..."
+    rm -f "${VOLUME_PATH}/openclaw.json"
+fi
+
+# Fixer les permissions (UID 1000 = utilisateur node dans le conteneur)
+chown -R 1000:1000 "${VOLUME_PATH}"
+echo "  OK - Permissions fixées (1000:1000)"
+
+# 7. Démarrer
+echo ""
+echo "[7/8] Démarrage des conteneurs..."
+docker compose up -d 2>/dev/null || docker-compose up -d
+echo "  OK - Conteneurs lancés"
+
+# 8. Vérification
+echo ""
+echo "[8/8] Vérification (attente 15s pour le démarrage)..."
+sleep 15
+
+echo ""
+echo "--- LOGS OPENCLAW (dernières 20 lignes) ---"
+docker logs openclaw --tail 20 2>&1
+echo "--- FIN LOGS ---"
+
+echo ""
+echo "--- TEST CONNECTIVITÉ LOCALE ---"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789 2>/dev/null || echo "ERREUR")
+echo "  curl http://127.0.0.1:18789 → HTTP ${HTTP_CODE}"
+
+if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "401" ]; then
+    echo "  Leo fonctionne !"
+elif [ "${HTTP_CODE}" = "ERREUR" ]; then
+    echo "  PROBLÈME: Leo ne répond pas encore. Vérifie les logs ci-dessus."
+else
+    echo "  Réponse inattendue. Vérifie les logs ci-dessus."
+fi
+
+echo ""
+echo "--- TOKEN D'ACCÈS ---"
+if [ -f "${VOLUME_PATH}/openclaw.json" ]; then
+    TOKEN=$(grep -o '"token":"[^"]*"' "${VOLUME_PATH}/openclaw.json" | head -1 | cut -d'"' -f4)
+    if [ -n "${TOKEN}" ] && [ "${TOKEN}" != "CHANGE_ME_TO_YOUR_GATEWAY_TOKEN" ]; then
+        echo "  Token: ${TOKEN}"
+    else
+        echo "  Token pas encore généré. Attends quelques secondes puis relance:"
+        echo "  cat ${VOLUME_PATH}/openclaw.json | grep token"
+    fi
+else
+    echo "  Fichier JSON pas encore créé. Attends quelques secondes puis:"
+    echo "  cat ${VOLUME_PATH}/openclaw.json | grep token"
+fi
+
+echo ""
+echo "=========================================="
+echo " DÉPLOIEMENT TERMINÉ"
+echo "=========================================="
+echo ""
+echo " URL:   https://leo.estarellas.online"
+echo " Logs:  docker logs -f openclaw"
+echo " Token: cat ${VOLUME_PATH}/openclaw.json | grep token"
+echo ""
+echo " RAPPEL: Change le modèle vers Haiku 4.5 dans l'onglet Agents"
+echo "         (pas Opus, trop lourd = timeouts)"
+echo "=========================================="
