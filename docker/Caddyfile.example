@@ -12,8 +12,21 @@
 # ============================================
 
 # Domaine principal - OpenClaw (Leo)
+# NOTE: Caddy v2 gère automatiquement les WebSockets (upgrade Connection).
+# On ajoute des timeouts plus longs pour les connexions WS longue durée.
 leo.estarellas.online {
-	reverse_proxy 127.0.0.1:18789
+	reverse_proxy 127.0.0.1:18789 {
+		# Timeouts pour les WebSockets (connexions longue durée)
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+
+		# Health check pour détecter un crash-loop
+		health_uri /
+		health_interval 30s
+		health_timeout 5s
+	}
 }
 
 # Domaine n8n (optionnel - ajuster selon ton setup)

@@ -81,22 +81,52 @@ echo ""
 echo "[5/8] Écriture Caddyfile..."
 cat > Caddyfile << 'EOF'
 leo.estarellas.online {
-	reverse_proxy 127.0.0.1:18789
+	reverse_proxy 127.0.0.1:18789 {
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+		health_uri /
+		health_interval 30s
+		health_timeout 5s
+	}
 }
 EOF
 echo "  OK"
 
-# 6. Nettoyer la config obsolète + permissions
+# 6. Initialiser la config si absente + permissions
 echo ""
-echo "[6/8] Nettoyage config obsolète et permissions..."
+echo "[6/8] Vérification config et permissions..."
 
 # Créer le dossier du volume s'il n'existe pas encore
 mkdir -p "${VOLUME_PATH}"
 
-# Supprimer l'ancien JSON (Leo en recréera un propre)
-if [ -f "${VOLUME_PATH}/openclaw.json" ]; then
-    echo "  Suppression de l'ancien openclaw.json..."
-    rm -f "${VOLUME_PATH}/openclaw.json"
+# Copier openclaw.json SEULEMENT s'il n'existe pas encore
+if [ ! -f "${VOLUME_PATH}/openclaw.json" ]; then
+    echo "  Aucun openclaw.json trouvé → copie du template..."
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "${SCRIPT_DIR}/openclaw/openclaw.json.example" ]; then
+        cp "${SCRIPT_DIR}/openclaw/openclaw.json.example" "${VOLUME_PATH}/openclaw.json"
+        echo "  IMPORTANT: Édite ${VOLUME_PATH}/openclaw.json pour changer le token !"
+    else
+        echo "  ATTENTION: Pas de template trouvé. OpenClaw créera sa config par défaut."
+    fi
+else
+    echo "  openclaw.json existant conservé (pas de suppression)"
+fi
+
+# Copier auth-profiles.json SEULEMENT s'il n'existe pas encore
+if [ ! -f "${VOLUME_PATH}/auth-profiles.json" ]; then
+    echo "  Aucun auth-profiles.json trouvé → copie du template..."
+    SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+    if [ -f "${SCRIPT_DIR}/openclaw/auth-profiles.json.example" ]; then
+        cp "${SCRIPT_DIR}/openclaw/auth-profiles.json.example" "${VOLUME_PATH}/auth-profiles.json"
+        echo "  IMPORTANT: Édite ${VOLUME_PATH}/auth-profiles.json avec ta clé API !"
+    else
+        echo "  ATTENTION: Pas de template trouvé pour auth-profiles.json."
+    fi
+else
+    echo "  auth-profiles.json existant conservé"
 fi
 
 # Fixer les permissions (UID 1000 = utilisateur node dans le conteneur)
@@ -109,27 +139,59 @@ echo "[7/8] Démarrage des conteneurs..."
 docker compose up -d 2>/dev/null || docker-compose up -d
 echo "  OK - Conteneurs lancés"
 
-# 8. Vérification
+# 8. Vérification avec retry
 echo ""
-echo "[8/8] Vérification (attente 20s pour le démarrage)..."
-sleep 20
+echo "[8/8] Vérification du démarrage..."
+
+# Attendre avec retry (max 60s)
+MAX_WAIT=60
+WAITED=0
+INTERVAL=5
+HTTP_CODE="ERREUR"
+
+while [ "${WAITED}" -lt "${MAX_WAIT}" ]; do
+    sleep "${INTERVAL}"
+    WAITED=$((WAITED + INTERVAL))
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789 2>/dev/null || echo "ERREUR")
+    echo "  [${WAITED}s] curl http://127.0.0.1:18789 → HTTP ${HTTP_CODE}"
+
+    if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "401" ]; then
+        break
+    fi
+
+    # Vérifier si le conteneur est en crash-loop
+    CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' openclaw 2>/dev/null || echo "unknown")
+    RESTART_COUNT=$(docker inspect --format='{{.RestartCount}}' openclaw 2>/dev/null || echo "0")
+    if [ "${RESTART_COUNT}" -gt 2 ] 2>/dev/null; then
+        echo ""
+        echo "  CRASH-LOOP DÉTECTÉ (${RESTART_COUNT} redémarrages) !"
+        echo ""
+        echo "  Causes fréquentes :"
+        echo "    1. Clé API manquante dans auth-profiles.json"
+        echo "    2. Token non configuré dans openclaw.json"
+        echo "    3. Port 18789 déjà utilisé par un autre processus"
+        echo ""
+        echo "  Pour corriger :"
+        echo "    nano ${VOLUME_PATH}/auth-profiles.json  # ajoute ta clé API"
+        echo "    nano ${VOLUME_PATH}/openclaw.json        # change le token"
+        echo "    docker compose restart openclaw"
+        break
+    fi
+done
 
 echo ""
-echo "--- LOGS OPENCLAW (dernières 20 lignes) ---"
-docker logs openclaw --tail 20 2>&1
+echo "--- LOGS OPENCLAW (dernières 30 lignes) ---"
+docker logs openclaw --tail 30 2>&1
 echo "--- FIN LOGS ---"
 
 echo ""
-echo "--- TEST CONNECTIVITÉ LOCALE ---"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789 2>/dev/null || echo "ERREUR")
-echo "  curl http://127.0.0.1:18789 → HTTP ${HTTP_CODE}"
-
 if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "401" ]; then
     echo "  Leo fonctionne !"
 elif [ "${HTTP_CODE}" = "ERREUR" ]; then
-    echo "  PROBLÈME: Leo ne répond pas encore. Vérifie les logs ci-dessus."
+    echo "  PROBLÈME: Leo ne répond pas. Vérifie les logs ci-dessus."
+    echo "  Aussi: ss -tlnp | grep 18789  (pour vérifier si le port est pris)"
 else
-    echo "  Réponse inattendue. Vérifie les logs ci-dessus."
+    echo "  Réponse inattendue (HTTP ${HTTP_CODE}). Vérifie les logs ci-dessus."
 fi
 
 echo ""
