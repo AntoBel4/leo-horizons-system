@@ -12,6 +12,12 @@
       "token": "CHANGE_ME_TO_YOUR_GATEWAY_TOKEN"
     }
   },
+  "agents": {
+    "default": {
+      "model": "google/gemini-2.5-flash",
+      "fallback": "anthropic/claude-haiku-4-5-20251001"
+    }
+  },
   "meta": {
     "lastTouchedVersion": "2026.3.2",
     "lastTouchedAt": "2026-03-04T00:00:00.000Z"
