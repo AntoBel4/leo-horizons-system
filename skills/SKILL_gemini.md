@@ -14,14 +14,14 @@ Ce skill donne à Léo la capacité de :
 
 ### Clé API
 **Compte :** leo.horizons.bot@gmail.com
-**Clé API :** AIzaSyCMfjSOEuCEjXdSP3H0gdCkj3pZZF_6QQg
+**Clé API :** (configurée dans auth-profiles.json sur le VPS — ne JAMAIS committer ici)
 **Modèle :** google/gemini-2.5-flash
 **Quota gratuit :** 1500 requêtes/jour (free tier)
 **Coût :** Gratuit jusqu'à 1500 req/jour
 
 ### Endpoint API
 ```
-POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyCMfjSOEuCEjXdSP3H0gdCkj3pZZF_6QQg
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=YOUR_API_KEY
 ```
 
 ---
