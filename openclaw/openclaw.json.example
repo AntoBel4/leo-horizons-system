@@ -7,9 +7,13 @@
   },
   "gateway": {
     "port": 18789,
+    "mode": "local",
     "auth": {
       "mode": "token",
       "token": "CHANGE_ME_TO_YOUR_GATEWAY_TOKEN"
+    },
+    "controlUi": {
+      "allowedOrigins": ["https://leo.estarellas.online"]
     }
   },
   "agents": {
