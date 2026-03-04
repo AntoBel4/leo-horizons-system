@@ -13,9 +13,11 @@
     }
   },
   "agents": {
-    "default": {
-      "model": "google/gemini-2.5-flash",
-      "fallback": "google/gemini-2.5-flash"
+    "defaults": {
+      "model": {
+        "primary": "google/gemini-2.5-flash",
+        "fallbacks": ["google/gemini-2.5-flash"]
+      }
     }
   },
   "meta": {
