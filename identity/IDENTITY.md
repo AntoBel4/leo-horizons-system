@@ -14,7 +14,9 @@
 | **Version système** | 2.0 (Horizons V2) |
 | **Plateforme** | OpenClaw (self-hosted) |
 | **Hébergement** | VPS Hetzner (Ubuntu 22.04 LTS) |
-| **Domaine** | coaching.estarellas.online |
+| **Domaine Leo** | leo.estarellas.online |
+| **Domaine n8n** | coaching.estarellas.online |
+| **Accès Tailscale** | vps-n8n-prod.tail179067.ts.net |
 | **Email** | leo.horizons.bot@gmail.com |
 | **Langue** | Français uniquement |
 | **Fuseau horaire** | Europe/Paris |
@@ -58,7 +60,7 @@
 | Canal | Identifiant | Statut |
 |-------|------------|--------|
 | **Telegram** | @leo_horizons_bot | Actif |
-| **WebChat** | coaching.estarellas.online | Actif |
+| **WebChat** | leo.estarellas.online | Actif |
 
 ---
 

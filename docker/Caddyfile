@@ -1,58 +1,54 @@
-# Caddyfile — Reverse Proxy pour Leo Horizons System
-# Domaine : coaching.estarellas.online
-# Note : Si Cloudflare Tunnel est utilisé, les ports 80/443 ne sont pas nécessaires
-#        et ce Caddyfile sert de reverse proxy interne uniquement.
+# ============================================
+# Caddyfile — RÉFÉRENCE de la config reverse proxy VPS
+# ============================================
+# Ce fichier documente le Caddyfile réel du VPS.
+# Pour modifier, éditer : ~/n8n-docker/Caddyfile
+# ============================================
 
-coaching.estarellas.online {
-    # OpenClaw (Leo) — Interface web principale
-    handle / {
-        reverse_proxy openclaw-leo:8080
-    }
-
-    handle /api/* {
-        reverse_proxy openclaw-leo:8080
-    }
-
-    # Dashboard de contrôle
-    handle /dashboard* {
-        basicauth {
-            # Générer le hash : caddy hash-password
-            # antoine $2a$14$CHANGE_ME_HASH_PASSWORD
-        }
-        reverse_proxy openclaw-leo:8080
-    }
-
-    # n8n — Webhooks
-    handle /webhook/* {
-        reverse_proxy n8n-coaching:5678
-    }
-
-    # n8n — Interface d'administration
-    handle /n8n/* {
-        basicauth {
-            # antoine $2a$14$CHANGE_ME_HASH_PASSWORD
-        }
-        reverse_proxy n8n-coaching:5678
-    }
-
-    # Fallback — tout le reste vers OpenClaw
-    handle {
-        reverse_proxy openclaw-leo:8080
-    }
-
-    # Headers de sécurité
-    header {
-        X-Content-Type-Options nosniff
-        X-Frame-Options DENY
-        Referrer-Policy strict-origin-when-cross-origin
-        -Server
-    }
-
-    # Logs
-    log {
-        output file /data/logs/access.log {
-            roll_size 10mb
-            roll_keep 5
-        }
-    }
+# n8n principal (immobilier)
+n8n.rentrerdesmandats.fr {
+    reverse_proxy n8n:5678
 }
+
+# n8n coaching (Leo workflows WF1-WF4)
+coaching.estarellas.online {
+    reverse_proxy n8n-coaching:5678
+}
+
+# OpenClaw (Leo assistant IA)
+leo.estarellas.online {
+    reverse_proxy openclaw:18789
+}
+
+# App prospect
+app.estarellas.online {
+    reverse_proxy prospect-app:8501
+}
+
+# n8n expert-local
+prospect.estarellas.online {
+    reverse_proxy n8n-expert-local:5678
+}
+
+# n8n automation
+automation.estarellas.online {
+    reverse_proxy n8n-automation:5678
+}
+
+# Accès Tailscale direct à OpenClaw
+vps-n8n-prod.tail179067.ts.net {
+    reverse_proxy 127.0.0.1:18789
+}
+
+# === À AJOUTER pour le dashboard ===
+# Option 1 : Sous-domaine dédié
+# dashboard.estarellas.online {
+#     basicauth {
+#         antoine $2a$14$HASH_DU_MOT_DE_PASSE
+#     }
+#     root * /srv/dashboard
+#     file_server
+# }
+#
+# Option 2 : Route sur leo.estarellas.online/dashboard
+# (nécessite que OpenClaw serve les fichiers statiques)
