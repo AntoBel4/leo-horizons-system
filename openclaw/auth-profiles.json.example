@@ -6,15 +6,15 @@
       "provider": "google",
       "token": "CHANGE_ME_TO_YOUR_GOOGLE_API_KEY"
     },
-    "anthropic:manual": {
+    "openrouter:manual": {
       "type": "token",
-      "provider": "anthropic",
-      "token": "CHANGE_ME_TO_YOUR_ANTHROPIC_API_KEY"
+      "provider": "openrouter",
+      "token": "CHANGE_ME_TO_YOUR_OPENROUTER_API_KEY"
     }
   },
   "lastGood": {
     "google": "google:manual",
-    "anthropic": "anthropic:manual"
+    "openrouter": "openrouter:manual"
   },
   "usageStats": {}
 }
