@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leo Horizons — Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --border: #2a2d37;
+      --text: #e4e4e7;
+      --text-dim: #71717a;
+      --h1-pro: #ef4444;
+      --h1-sante: #22c55e;
+      --h1-famille: #eab308;
+      --h1-admin: #6b7280;
+      --h2-croissance: #3b82f6;
+      --h3-passion: #a855f7;
+      --success: #22c55e;
+      --warning: #eab308;
+      --error: #ef4444;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    header .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-dot.up { background: var(--success); }
+    .status-dot.down { background: var(--error); }
+    .status-dot.unknown { background: var(--warning); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 1rem;
+      padding: 1.5rem 2rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+
+    .card h2 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .service-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .service-row:last-child { border-bottom: none; }
+
+    .service-name {
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .service-info {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .badge {
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge.up { background: rgba(34,197,94,0.15); color: var(--success); }
+    .badge.down { background: rgba(239,68,68,0.15); color: var(--error); }
+    .badge.unknown { background: rgba(234,179,8,0.15); color: var(--warning); }
+
+    .event-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .event-item:last-child { border-bottom: none; }
+
+    .event-color {
+      width: 4px;
+      min-height: 36px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .event-color.h1-pro { background: var(--h1-pro); }
+    .event-color.h1-sante { background: var(--h1-sante); }
+    .event-color.h1-famille { background: var(--h1-famille); }
+    .event-color.h1-admin { background: var(--h1-admin); }
+    .event-color.h2-croissance { background: var(--h2-croissance); }
+    .event-color.h3-passion { background: var(--h3-passion); }
+
+    .event-details {
+      flex: 1;
+    }
+
+    .event-title {
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .event-time {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .event-horizon {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+    }
+
+    .batch-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+
+    .batch-item:last-child { border-bottom: none; }
+
+    .batch-status {
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .batch-status.pending { color: var(--warning); }
+    .batch-status.done { color: var(--success); }
+    .batch-status.error { color: var(--error); }
+
+    .log-item {
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.8rem;
+    }
+
+    .log-item:last-child { border-bottom: none; }
+
+    .log-time {
+      color: var(--text-dim);
+      font-size: 0.7rem;
+    }
+
+    .empty-state {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .refresh-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .refresh-btn:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .last-update {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .maintenance-section {
+      margin-top: 1rem;
+    }
+
+    .maint-btn {
+      background: var(--border);
+      border: none;
+      color: var(--text);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      margin: 0.25rem;
+      transition: background 0.2s;
+    }
+
+    .maint-btn:hover {
+      background: var(--h2-croissance);
+    }
+
+    .maint-btn.danger:hover {
+      background: var(--error);
+    }
+
+    #maint-output {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: var(--bg);
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      display: none;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; padding: 1rem; }
+      header { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Leo Horizons — Dashboard</h1>
+    <span class="last-update" id="last-update">Derniere mise a jour : --</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:1rem;">
+    <div class="status-badge">
+      <span class="status-dot" id="leo-status-dot"></span>
+      <span id="leo-status-text">Verification...</span>
+    </div>
+    <button class="refresh-btn" onclick="refreshAll()">Rafraichir</button>
+  </div>
+</header>
+
+<div class="grid">
+  <!-- Statut des services -->
+  <div class="card">
+    <h2>Statut des services</h2>
+    <div id="services-list">
+      <div class="service-row">
+        <div>
+          <div class="service-name">OpenClaw (Leo)</div>
+          <div class="service-info" id="leo-model">Modele : --</div>
+        </div>
+        <span class="badge unknown" id="svc-openclaw">Verification</span>
+      </div>
+      <div class="service-row">
+        <div>
+          <div class="service-name">n8n (Orchestration)</div>
+          <div class="service-info">Workflows WF1-WF4</div>
+        </div>
+        <span class="badge unknown" id="svc-n8n">Verification</span>
+      </div>
+      <div class="service-row">
+        <div>
+          <div class="service-name">WF3 — GCal Lecture</div>
+          <div class="service-info">/webhook/gcal-leo</div>
+        </div>
+        <span class="badge unknown" id="svc-wf3">Verification</span>
+      </div>
+      <div class="service-row">
+        <div>
+          <div class="service-name">WF4a — GCal Ecriture</div>
+          <div class="service-info">/webhook/google-calendar-create</div>
+        </div>
+        <span class="badge unknown" id="svc-wf4">Verification</span>
+      </div>
+      <div class="service-row">
+        <div>
+          <div class="service-name">API Notion</div>
+          <div class="service-info">Base de donnees</div>
+        </div>
+        <span class="badge unknown" id="svc-notion">Verification</span>
+      </div>
+      <div class="service-row">
+        <div>
+          <div class="service-name">Telegram Bot</div>
+          <div class="service-info">@leo_horizons_bot</div>
+        </div>
+        <span class="badge unknown" id="svc-telegram">Verification</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google Calendar — 7 jours -->
+  <div class="card">
+    <h2>Agenda — 7 prochains jours</h2>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--h1-pro)"></div>H1-Pro</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--h1-sante)"></div>H1-Sante</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--h1-famille)"></div>H1-Famille</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--h1-admin)"></div>H1-Admin</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--h2-croissance)"></div>H2-Croissance</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--h3-passion)"></div>H3-Passion</div>
+    </div>
+    <div id="calendar-events" style="margin-top:0.75rem;">
+      <div class="empty-state">Chargement des evenements...</div>
+    </div>
+  </div>
+
+  <!-- File batch Notion -->
+  <div class="card">
+    <h2>File batch Notion</h2>
+    <div id="batch-queue">
+      <div class="empty-state">Chargement de la file...</div>
+    </div>
+  </div>
+
+  <!-- Derniers briefings -->
+  <div class="card">
+    <h2>Derniers briefings (WF2)</h2>
+    <div id="briefings-log">
+      <div class="empty-state">Chargement des logs...</div>
+    </div>
+  </div>
+
+  <!-- Maintenance -->
+  <div class="card">
+    <h2>Maintenance</h2>
+    <div class="maintenance-section">
+      <button class="maint-btn" onclick="maintAction('health')">Healthcheck complet</button>
+      <button class="maint-btn" onclick="maintAction('update-check')">Verifier mises a jour</button>
+      <button class="maint-btn" onclick="maintAction('backup')">Lancer backup</button>
+      <button class="maint-btn" onclick="maintAction('logs')">Derniers logs</button>
+      <button class="maint-btn danger" onclick="maintAction('restart')">Redemarrer Leo</button>
+      <div id="maint-output"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===========================================
+  // Configuration
+  // ===========================================
+  const CONFIG = {
+    // Base URL — adapter selon l'environnement
+    baseUrl: window.location.origin,
+    // Endpoints
+    endpoints: {
+      health: '/health',
+      gcalRead: '/webhook/gcal-leo',
+      n8nHealth: '/n8n/healthz',
+    },
+    // Intervalle de rafraichissement automatique (ms)
+    refreshInterval: 60000,
+    // Mapping colorId -> horizon
+    colorMap: {
+      '11': { class: 'h1-pro', label: 'H1-Pro', color: 'var(--h1-pro)' },
+      '8':  { class: 'h1-admin', label: 'H1-Admin', color: 'var(--h1-admin)' },
+      '2':  { class: 'h1-sante', label: 'H1-Sante', color: 'var(--h1-sante)' },
+      '5':  { class: 'h1-famille', label: 'H1-Famille', color: 'var(--h1-famille)' },
+      '9':  { class: 'h2-croissance', label: 'H2-Croissance', color: 'var(--h2-croissance)' },
+      '3':  { class: 'h3-passion', label: 'H3-Passion', color: 'var(--h3-passion)' },
+    }
+  };
+
+  // ===========================================
+  // Utilitaires
+  // ===========================================
+  function formatTime(isoString) {
+    const d = new Date(isoString);
+    return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatDate(isoString) {
+    const d = new Date(isoString);
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  function formatNow() {
+    return new Date().toLocaleString('fr-FR', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
+  function setServiceStatus(id, status, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'badge ' + status;
+    el.textContent = text || (status === 'up' ? 'Actif' : status === 'down' ? 'Inactif' : 'Inconnu');
+  }
+
+  // ===========================================
+  // Verification des services
+  // ===========================================
+  async function checkServices() {
+    // OpenClaw health
+    try {
+      const res = await fetch(CONFIG.baseUrl + CONFIG.endpoints.health, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        setServiceStatus('svc-openclaw', 'up', 'Actif');
+        document.getElementById('leo-status-dot').className = 'status-dot up';
+        document.getElementById('leo-status-text').textContent = 'Leo en ligne';
+        document.getElementById('leo-model').textContent = 'Modele : claude-haiku-4-5';
+      } else {
+        throw new Error('not ok');
+      }
+    } catch {
+      setServiceStatus('svc-openclaw', 'down', 'Inactif');
+      document.getElementById('leo-status-dot').className = 'status-dot down';
+      document.getElementById('leo-status-text').textContent = 'Leo hors ligne';
+    }
+
+    // n8n health
+    try {
+      const res = await fetch(CONFIG.baseUrl + CONFIG.endpoints.n8nHealth, { signal: AbortSignal.timeout(5000) });
+      setServiceStatus('svc-n8n', res.ok ? 'up' : 'down');
+    } catch {
+      setServiceStatus('svc-n8n', 'unknown', 'Inconnu');
+    }
+
+    // WF3 - GCal lecture
+    try {
+      const res = await fetch(CONFIG.baseUrl + CONFIG.endpoints.gcalRead, { signal: AbortSignal.timeout(5000) });
+      setServiceStatus('svc-wf3', res.ok ? 'up' : 'down');
+    } catch {
+      setServiceStatus('svc-wf3', 'unknown', 'Inconnu');
+    }
+
+    // WF4 est un POST, on ne peut que verifier que l'URL repond
+    setServiceStatus('svc-wf4', 'unknown', 'POST only');
+
+    // Notion API
+    setServiceStatus('svc-notion', 'unknown', 'Voir logs');
+
+    // Telegram
+    setServiceStatus('svc-telegram', 'unknown', 'Voir logs');
+  }
+
+  // ===========================================
+  // Chargement des evenements GCal
+  // ===========================================
+  async function loadCalendarEvents() {
+    const container = document.getElementById('calendar-events');
+    try {
+      const res = await fetch(CONFIG.baseUrl + CONFIG.endpoints.gcalRead, {
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+
+      const events = await res.json();
+
+      if (!events || events.length === 0) {
+        container.innerHTML = '<div class="empty-state">Aucun evenement dans les 7 prochains jours</div>';
+        return;
+      }
+
+      // Grouper par jour
+      const byDay = {};
+      events.forEach(ev => {
+        const day = formatDate(ev.start);
+        if (!byDay[day]) byDay[day] = [];
+        byDay[day].push(ev);
+      });
+
+      let html = '';
+      for (const [day, evts] of Object.entries(byDay)) {
+        html += '<div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.75rem;margin-bottom:0.25rem;font-weight:600;">' + day + '</div>';
+        evts.forEach(ev => {
+          const horizon = CONFIG.colorMap[ev.colorId] || { class: 'h1-admin', label: '?', color: 'var(--text-dim)' };
+          html += '<div class="event-item">';
+          html += '  <div class="event-color ' + horizon.class + '"></div>';
+          html += '  <div class="event-details">';
+          html += '    <div class="event-title">' + escapeHtml(ev.summary || 'Sans titre') + '</div>';
+          html += '    <div class="event-time">' + formatTime(ev.start) + ' - ' + formatTime(ev.end) + '</div>';
+          html += '  </div>';
+          html += '  <span class="event-horizon" style="background:' + horizon.color + '20;color:' + horizon.color + '">' + horizon.label + '</span>';
+          html += '</div>';
+        });
+      }
+
+      container.innerHTML = html;
+    } catch {
+      container.innerHTML = '<div class="empty-state">Impossible de charger le calendrier.<br>Verifiez que WF3 est actif.</div>';
+    }
+  }
+
+  // ===========================================
+  // File batch (Notion) — simulation
+  // ===========================================
+  function loadBatchQueue() {
+    const container = document.getElementById('batch-queue');
+    // En production, ceci ferait un appel API Notion
+    // Pour l'instant, affichage statique indicatif
+    container.innerHTML = '<div class="empty-state">Connectez l\'API Notion pour voir la file batch.<br>Variable : NOTION_API_KEY</div>';
+  }
+
+  // ===========================================
+  // Derniers briefings — simulation
+  // ===========================================
+  function loadBriefings() {
+    const container = document.getElementById('briefings-log');
+    // En production, lire les logs n8n WF2
+    container.innerHTML = '<div class="empty-state">Connectez n8n pour voir les derniers briefings.</div>';
+  }
+
+  // ===========================================
+  // Maintenance
+  // ===========================================
+  function maintAction(action) {
+    const output = document.getElementById('maint-output');
+    output.style.display = 'block';
+
+    const commands = {
+      'health': 'Healthcheck en cours...\n\nOpenClaw: verification...\nn8n: verification...\nNotion API: verification...\nTelegram: verification...\n\nUtilisez les commandes Docker sur le VPS :\n  docker compose -f docker/docker-compose.yml ps\n  docker compose -f docker/docker-compose.yml logs --tail 20',
+      'update-check': 'Verification des mises a jour...\n\nPour mettre a jour :\n  docker compose -f docker/docker-compose.yml pull\n  docker compose -f docker/docker-compose.yml up -d',
+      'backup': 'Pour lancer un backup :\n  cp openclaw/openclaw.json openclaw/openclaw.json.backup.$(date +%Y%m%d)\n  docker run --rm -v openclaw-data:/data -v $(pwd)/backups:/backup alpine tar czf /backup/openclaw-$(date +%Y%m%d).tar.gz /data',
+      'logs': 'Pour voir les logs :\n  docker logs openclaw-leo --tail 50\n  docker logs n8n-coaching --tail 50',
+      'restart': 'Pour redemarrer Leo :\n  docker restart openclaw-leo\n\nPour redemarrer tout :\n  docker compose -f docker/docker-compose.yml restart'
+    };
+
+    output.textContent = commands[action] || 'Action inconnue';
+  }
+
+  // ===========================================
+  // Securite HTML
+  // ===========================================
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ===========================================
+  // Rafraichissement global
+  // ===========================================
+  async function refreshAll() {
+    document.getElementById('last-update').textContent = 'Derniere mise a jour : ' + formatNow();
+    await Promise.all([
+      checkServices(),
+      loadCalendarEvents(),
+    ]);
+    loadBatchQueue();
+    loadBriefings();
+  }
+
+  // Demarrage
+  refreshAll();
+
+  // Auto-refresh
+  setInterval(refreshAll, CONFIG.refreshInterval);
+</script>
+
+</body>
+</html>

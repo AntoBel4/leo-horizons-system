@@ -1,0 +1,58 @@
+# Caddyfile — Reverse Proxy pour Leo Horizons System
+# Domaine : coaching.estarellas.online
+# Note : Si Cloudflare Tunnel est utilisé, les ports 80/443 ne sont pas nécessaires
+#        et ce Caddyfile sert de reverse proxy interne uniquement.
+
+coaching.estarellas.online {
+    # OpenClaw (Leo) — Interface web principale
+    handle / {
+        reverse_proxy openclaw-leo:8080
+    }
+
+    handle /api/* {
+        reverse_proxy openclaw-leo:8080
+    }
+
+    # Dashboard de contrôle
+    handle /dashboard* {
+        basicauth {
+            # Générer le hash : caddy hash-password
+            # antoine $2a$14$CHANGE_ME_HASH_PASSWORD
+        }
+        reverse_proxy openclaw-leo:8080
+    }
+
+    # n8n — Webhooks
+    handle /webhook/* {
+        reverse_proxy n8n-coaching:5678
+    }
+
+    # n8n — Interface d'administration
+    handle /n8n/* {
+        basicauth {
+            # antoine $2a$14$CHANGE_ME_HASH_PASSWORD
+        }
+        reverse_proxy n8n-coaching:5678
+    }
+
+    # Fallback — tout le reste vers OpenClaw
+    handle {
+        reverse_proxy openclaw-leo:8080
+    }
+
+    # Headers de sécurité
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+
+    # Logs
+    log {
+        output file /data/logs/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}

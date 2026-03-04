@@ -2,8 +2,8 @@
   "version": 1,
   "auth": {
     "profiles": {
-      "google:manual": {
-        "provider": "google",
+      "openrouter:main": {
+        "provider": "openrouter",
         "mode": "token"
       }
     }
@@ -11,7 +11,46 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "google/gemini-2.5-flash"
+        "primary": "anthropic/claude-haiku-4-5",
+        "fallback": [
+          "google/gemini-2.5-flash",
+          "meta-llama/llama-3.3-70b-instruct:free"
+        ]
+      },
+      "systemPrompt": "Tu es Léo, assistant IA personnel d'Antoine Estarellas. Lis SOUL.md, USER.md et les SKILL_*.md pour connaître ton identité complète, les préférences d'Antoine, et tes capacités. Tu réponds TOUJOURS en français. Tu es direct, honnête, proactif. Tu respectes le système Horizons V2 (H1-Socle, H2-Croissance, H3-Plaisir).",
+      "temperature": 0.7,
+      "maxTokens": 2048
+    },
+    "profiles": {
+      "main": {
+        "name": "Léo (Antoine)",
+        "description": "Agent principal pour Antoine — accès complet H1/H2/H3, batch, calendrier, Notion",
+        "model": {
+          "primary": "anthropic/claude-haiku-4-5",
+          "fallback": [
+            "google/gemini-2.5-flash"
+          ]
+        },
+        "permissions": [
+          "calendar:read",
+          "calendar:write",
+          "notion:read",
+          "notion:write",
+          "n8n:webhook",
+          "telegram:send"
+        ]
+      },
+      "perso": {
+        "name": "Léo (Belinda)",
+        "description": "Agent simplifié pour Belinda — notepad, confirmations brèves, pas de fonctionnalités Horizons",
+        "model": {
+          "primary": "google/gemini-2.5-flash"
+        },
+        "systemPrompt": "Tu es Léo, un assistant simple et bienveillant. Tu réponds en français. Tu aides avec des notes rapides, des rappels simples, et des confirmations brèves. Tu ne gères PAS le système Horizons ni les projets professionnels.",
+        "permissions": [
+          "notepad:read",
+          "notepad:write"
+        ]
       }
     }
   },
@@ -22,18 +61,48 @@
   "gateway": {
     "auth": {
       "mode": "token",
-      "token": "CHANGE_ME_TO_YOUR_GATEWAY_TOKEN"
-    }
+      "token": "${OPENCLAW_SECRET_KEY}"
+    },
+    "baseUrl": "https://openrouter.ai/api/v1"
   },
   "plugins": {
     "entries": {
       "telegram": {
-        "enabled": true
+        "enabled": true,
+        "config": {
+          "botToken": "${TELEGRAM_BOT_TOKEN}",
+          "allowedChatIds": ["${TELEGRAM_CHAT_ID}"]
+        }
+      }
+    }
+  },
+  "tools": {
+    "notion": {
+      "enabled": true,
+      "apiKey": "${NOTION_API_KEY}",
+      "databases": {
+        "tasks": "${NOTION_DATABASE_ID_TASKS}",
+        "health": "${NOTION_DATABASE_ID_HEALTH}",
+        "projects": "${NOTION_DATABASE_ID_PROJECTS}",
+        "objectives": "${NOTION_DATABASE_ID_OBJECTIVES}",
+        "victories": "${NOTION_DATABASE_ID_VICTORIES}",
+        "family": "${NOTION_DATABASE_ID_FAMILY}",
+        "crm": "${NOTION_DATABASE_ID_CRM}",
+        "reflections": "${NOTION_DATABASE_ID_REFLECTIONS}"
+      }
+    },
+    "n8n": {
+      "enabled": true,
+      "baseUrl": "${N8N_WEBHOOK_BASE_URL}",
+      "webhooks": {
+        "gcal-read": "/webhook/gcal-leo",
+        "gcal-write": "/webhook/google-calendar-create"
       }
     }
   },
   "meta": {
-    "lastTouchedVersion": "2026.2.17",
-    "lastTouchedAt": "2026-02-26T19:26:09.926Z"
+    "lastTouchedVersion": "2026.3.03",
+    "lastTouchedAt": "2026-03-03T00:00:00.000Z",
+    "description": "Configuration Leo Horizons System — Antoine Estarellas"
   }
 }

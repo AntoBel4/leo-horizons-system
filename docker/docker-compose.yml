@@ -1,0 +1,111 @@
+version: "3.8"
+
+services:
+  # ===========================================
+  # OpenClaw (Leo) — Assistant IA
+  # ===========================================
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-leo
+    restart: unless-stopped
+    ports:
+      - "${OPENCLAW_PORT:-8000}:8080"
+    volumes:
+      - openclaw-data:/app/backend/data
+      - ./openclaw/openclaw.json:/app/backend/data/config.json:ro
+    environment:
+      - OPENAI_API_BASE_URL=https://openrouter.ai/api/v1
+      - OPENAI_API_KEY=${OPENROUTER_API_KEY}
+      - WEBUI_SECRET_KEY=${OPENCLAW_SECRET_KEY:-change-me-to-random-string}
+      - ENABLE_SIGNUP=false
+      - DEFAULT_LOCALE=fr-FR
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - NOTION_DATABASE_ID_TASKS=${NOTION_DATABASE_ID_TASKS}
+      - NOTION_DATABASE_ID_HEALTH=${NOTION_DATABASE_ID_HEALTH}
+      - NOTION_DATABASE_ID_PROJECTS=${NOTION_DATABASE_ID_PROJECTS}
+      - NOTION_DATABASE_ID_OBJECTIVES=${NOTION_DATABASE_ID_OBJECTIVES}
+      - NOTION_DATABASE_ID_VICTORIES=${NOTION_DATABASE_ID_VICTORIES}
+      - NOTION_DATABASE_ID_FAMILY=${NOTION_DATABASE_ID_FAMILY}
+      - NOTION_DATABASE_ID_CRM=${NOTION_DATABASE_ID_CRM}
+      - NOTION_DATABASE_ID_REFLECTIONS=${NOTION_DATABASE_ID_REFLECTIONS}
+      - N8N_WEBHOOK_BASE_URL=${N8N_WEBHOOK_BASE_URL:-http://n8n:5678}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    networks:
+      - leo-network
+    depends_on:
+      - n8n
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================
+  # n8n — Orchestration des workflows
+  # ===========================================
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n-coaching
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    environment:
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-https}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - WEBHOOK_URL=${WEBHOOK_TUNNEL_URL:-https://coaching.estarellas.online/}
+      - GENERIC_TIMEZONE=${TIMEZONE:-Europe/Paris}
+      - TZ=${TIMEZONE:-Europe/Paris}
+      - NODE_ENV=${NODE_ENV:-production}
+      # Credentials via env
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    networks:
+      - leo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================
+  # Caddy — Reverse Proxy + SSL automatique
+  # ===========================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - leo-network
+    depends_on:
+      - openclaw
+      - n8n
+
+volumes:
+  openclaw-data:
+    driver: local
+  n8n-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+
+networks:
+  leo-network:
+    driver: bridge
