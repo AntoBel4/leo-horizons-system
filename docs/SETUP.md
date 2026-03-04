@@ -262,6 +262,29 @@ Après déploiement, teste chaque composant:
 - Diminue `max_tokens` dans les prompts
 - Utilise Gemini Flash au lieu de Haiku (plus rapide mais moins qualitatif)
 
+### OpenClaw en Crash Loop (502 Bad Gateway)
+
+**Symptômes** : Erreur 502 sur le domaine, conteneur en boucle de redémarrage.
+
+**Diagnostic rapide** :
+```bash
+# 1. Vérifier les logs
+docker logs openclaw --tail 50
+
+# 2. Tester la connectivité locale
+curl -I http://127.0.0.1:18789
+```
+
+**Causes fréquentes** :
+1. **Config JSON invalide** : Clés obsolètes (`host`, `agent`) dans `openclaw.json`
+   → Supprimer le fichier et redémarrer le conteneur
+2. **Permissions (EACCES)** : `chown -R 1000:1000` sur le volume config
+3. **Réseau Docker** : Vérifier `OPENCLAW_HOST=0.0.0.0` dans docker-compose.yml
+4. **Caddyfile** : Utiliser `reverse_proxy openclaw:18789` (pas `localhost`)
+5. **Modèle trop lourd** : Passer de Opus à Haiku 4.5 dans l'onglet Agents
+
+**Guide complet** : [TROUBLESHOOTING-OPENCLAW.md](TROUBLESHOOTING-OPENCLAW.md)
+
 ## 🔄 Maintenance
 
 ### Sauvegarde Régulière

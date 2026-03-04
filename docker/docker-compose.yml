@@ -1,0 +1,118 @@
+# ============================================
+# Docker Compose - Leo Horizons System
+# ============================================
+#
+# Services : OpenClaw (Leo), n8n, Caddy (reverse proxy)
+#
+# USAGE:
+#   cp ../.env.example ../.env  # puis édite avec tes clés
+#   docker compose up -d
+#   docker compose logs -f openclaw
+#
+# IMPORTANT - Prévention Crash Loop:
+#   - Ne PAS utiliser de modèle lourd (Opus) → préférer Haiku 4.5
+#   - Vérifier que openclaw.json ne contient PAS de clés obsolètes (host, agent)
+#   - Vérifier les permissions du volume : chown -R 1000:1000 sur le volume config
+#
+# ============================================
+
+services:
+  # ──────────────────────────────────────────
+  # OpenClaw (Leo) - Assistant IA
+  # ──────────────────────────────────────────
+  openclaw:
+    image: openclaw/openclaw:latest
+    container_name: openclaw
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    environment:
+      # Port d'écoute (DOIT être 18789 pour compatibilité Caddy)
+      - OPENCLAW_PORT=18789
+      # Écoute sur toutes les interfaces (0.0.0.0) et NON 127.0.0.1
+      # Sans cela, le conteneur est invisible pour Caddy / le réseau Docker
+      - OPENCLAW_HOST=0.0.0.0
+      # Mode d'authentification par token
+      - OPENCLAW_AUTH_MODE=token
+      # Niveau de log
+      - OPENCLAW_LOG_LEVEL=${OPENCLAW_LOG_LEVEL:-info}
+      # Timezone
+      - TZ=${TIMEZONE:-Europe/Paris}
+    volumes:
+      # Volume nommé pour la config persistante
+      # Le fichier openclaw.json est stocké dans /home/node/.openclaw/
+      - openclaw_config:/home/node/.openclaw
+    networks:
+      - leo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ──────────────────────────────────────────
+  # n8n - Orchestration des workflows
+  # ──────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-https}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - WEBHOOK_TUNNEL_URL=${WEBHOOK_TUNNEL_URL}
+      - GENERIC_TIMEZONE=${TIMEZONE:-Europe/Paris}
+      - TZ=${TIMEZONE:-Europe/Paris}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - leo-network
+    depends_on:
+      openclaw:
+        condition: service_healthy
+
+  # ──────────────────────────────────────────
+  # Caddy - Reverse Proxy & TLS automatique
+  # ──────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - leo-network
+    depends_on:
+      - openclaw
+      - n8n
+
+# ──────────────────────────────────────────
+# Volumes
+# ──────────────────────────────────────────
+volumes:
+  openclaw_config:
+    driver: local
+  n8n_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+# ──────────────────────────────────────────
+# Réseau partagé
+# ──────────────────────────────────────────
+networks:
+  leo-network:
+    driver: bridge
