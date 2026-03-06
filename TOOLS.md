@@ -230,3 +230,31 @@ Skills are shared. Your setup is yours. Keeping them apart means you can update 
 ---
 
 Add whatever helps you do your job. This is your cheat sheet.
+
+---
+
+## 🎯 Pipeline Content Team — PRIORITÉ SUR n8n POUR LE BLOG
+
+### IMPORTANT
+Le pipeline de production de contenu (blog et expert-local) passe désormais par l'équipe d'agents OpenClaw — PAS par n8n.
+
+### Commandes disponibles
+- `/brief [sujet]` → Lance le pipeline blog via Atlas → Clavis → Maya-Blog → Graphix → Pulse
+- `/equipe` → État de l'équipe
+- `/status` → Pipeline en cours
+- `/valider` → Passer à l'étape suivante
+- `/stop` → Suspendre
+
+### Agents disponibles
+- `atlas` → brief via : openclaw agent --agent atlas --message "[texte]"
+- `clavis` → brief via : openclaw agent --agent clavis --message "[texte]"
+- `maya-blog` → brief via : openclaw agent --agent maya-blog --message "[texte]"
+- `maya-local` → brief via : openclaw agent --agent maya-local --message "[texte]"
+- `graphix` → brief via : openclaw agent --agent graphix --message "[texte]"
+- `pulse` → brief via : openclaw agent --agent pulse --message "[texte]"
+
+### n8n reste utilisé pour
+- Briefings quotidiens (WF2)
+- Google Calendar (WF3/WF4)
+- Batch nocturne
+- PAS pour la production de contenu
