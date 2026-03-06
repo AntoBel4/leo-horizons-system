@@ -1,0 +1,8 @@
+# Credentials et données sensibles
+.openclaw/
+MEMORY.md
+
+# Fichiers temporaires
+*.tmp
+*.log
+*.bak
