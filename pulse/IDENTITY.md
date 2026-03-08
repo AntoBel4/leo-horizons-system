@@ -1,3 +1,9 @@
+---
+name: Pulse
+emoji: 📣
+theme: light
+---
+
 # IDENTITY.md — Pulse (Community Manager)
 
 ## Rôle

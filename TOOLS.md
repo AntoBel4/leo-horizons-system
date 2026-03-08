@@ -1,11 +1,5 @@
 # TOOLS.md — Capacités et outils de Léo
-*Version février 2026 — Mise à jour continue*
-
----
-
-## Répertoire des capacités
-
-Léo est un agent autonome multicanal. Voici ce qu'il peut faire nativement et via ses intégrations.
+*Version Mars 2026 — Mise à jour continue*
 
 ---
 
@@ -32,229 +26,146 @@ Léo est un agent autonome multicanal. Voici ce qu'il peut faire nativement et v
 
 ---
 
-## 🔗 Intégrations principales
+## 🔗 Intégrations actives
 
 ### Telegram
-**Canal :** @leo_horizons_bot (agent `main`) + @CoachHorizonsAntoine_bot (agent `perso`)
-**Capacités :**
-- Réception de commandes texte et markup inline
-- Envoi de messages formatés, images, documents
-- Webhook pour n8n → alerte + commande vers Léo
-- Groupe fermé pour Antoine + Belinda (Centre de Commande Familial)
-
-**Limite actuelle :** pas d'MCP Telegram natif — Léo répond uniquement au contenu relaissé par n8n/OpenClaw
-
-### n8n (Automation Engine)
-**Serveur :** prospect.estarellas.online
-**Workflows actifs :**
-- **WF1** : Commandes Telegram (santé, gamification, routage)
-- **WF2** : Briefings automatisés quotidiens (6:30 AM), check-in midi, résumés soir, reviews dimanche
-- **WF3/WF4** : Intégration Google Calendar (webhooks), batch nocturne (2 AM)
-- **Batch system** : file d'attente tâches nuit, budget strict API
-
-**Capacités :** webhook déclencheurs, appels API Claude via OpenRouter, transformation data, logs Notion, alertes Telegram
+- **Canal Leo :** @leo_horizons_bot (coaching, stratégie, équipe)
+- **Canal WF1 :** @CoachHorizonsAntoine_bot (saisie terrain — géré par n8n WF1)
+- **Canal Orion :** @orion_horizons_bot (job hunting)
+- Envoi de messages formatés, résumés, alertes
 
 ### Google Calendar
-**Accès :** via n8n webhooks (WF3/WF4)
-**Lecture :**
-- Événements H1/H2/H3 (couleurs Horizons)
-- Extraction du contexte quotidien, planification
-- Détection de surcharge/déséquilibre
+**Accès :** via n8n webhooks
+- **Lecture (WF3) :** `GET https://coaching.estarellas.online/webhook/gcal-leo`
+- **Écriture (WF4) :** `POST https://coaching.estarellas.online/webhook/google-calendar-create`
 
-**Écriture :** possible via n8n (non-testé en prod)
+Format écriture WF4 :
+```json
+{
+  "titre": "🔵 [CROISSANCE] - expert-local.fr — SEO audit",
+  "debut": "2026-03-07T14:00:00+01:00",
+  "duree": 120,
+  "colorId": "9",
+  "description": "📌 Objectif : ...\n📋 DDF : ..."
+}
+```
+
+Mapping colorId :
+| Horizon | colorId | Emoji |
+|---------|---------|-------|
+| H1-Pro | 11 | 🔴 |
+| H1-Admin | 8 | ⚫ |
+| H1-Santé | 2 | 🟢 |
+| H1-Famille | 5 | 🟡 |
+| H2-Croissance | 9 | 🔵 |
+| H3-Passion | 3 | 🟣 |
 
 ### Notion
-**Intégration :** ❌ **Pas encore configurée dans Léo**
-**Capacités futures :**
-- Requêtes sur Projets, Objectifs, Tâches, Victoires, Santé Log
-- Mise à jour de statuts, logs, données
-- Sync Horizons V1 ↔ Notion
+**Accès :** API directe (clé en variable d'env `NOTION_API_KEY`)
+**Base URL :** `https://api.notion.com/v1`
 
-**Priorité :** configurer MCP Notion ou intégration API dans n8n + OpenClaw
+Bases de données disponibles :
+| Base | Variable env | Usage |
+|------|-------------|-------|
+| Tâches | `NOTION_DB_TASKS` | Tâches en cours, backlog |
+| Projets | `NOTION_DB_PROJECTS` | Projets actifs |
+| Saisons | `NOTION_DB_SEASONS` | Cycles 6 semaines |
+| Victoires | `NOTION_DB_VICTOIRES` | Victoires loguées par WF1 |
+| Santé Log | `NOTION_SANTE_LOG_DB` | Sport, poids, eau (écrit par WF1) |
+| Objectifs | `NOTION_OBJECTIFS_DB` | Objectifs par horizon |
+| Tâches WF1 | `NOTION_TACHES_DB` | Tâches créées via WF1 |
+| Réflexions | `NOTION_REFLEXIONS_DB` | Réflexions et insights |
+| Page Santé | `NOTION_PAGE_HEALTH` | Page santé globale |
+| Page Budget | `NOTION_PAGE_BUDGET` | Suivi budget |
 
-### Google Drive / Gmail
-**Accès :** en attente (pas configuré)
-**Capacités potentielles :**
-- Lecture fichiers partagés, documents critiques
-- Envoi emails desde leo.horizons.bot@gmail.com
-- Archivage, partage sécurisé
+**Architecture données :**
+- @CoachHorizonsAntoine_bot (WF1) **écrit** dans Notion (sport, poids, eau, victoires)
+- Leo **lit ET écrit** dans Notion : victoires, réflexions, tâches (via API directe + curl)
+- @CoachHorizonsAntoine_bot (WF1) gère uniquement : sport, poids, eau (migration prévue)
+
+### n8n Coaching
+**Serveur :** coaching.estarellas.online
+**Workflows actifs :**
+- **WF1** : Bot Telegram saisie terrain (@CoachHorizonsAntoine_bot)
+  - Commandes : `/jour`, `/event`, `/audit`, `/sport`, `/poids`, `/eau`, `/victoire`, `/bilan`
+- **WF2** : Briefings automatisés
+  - 6h30 → briefing matinal (météo + news + objectifs Notion)
+  - 12h30 → check-in midi
+  - 18h00 → résumé soir
+  - Dimanche 18h → QG Stratégique (review hebdo)
+- **WF3** : Lecture Google Calendar (webhook GET)
+- **WF4** : Écriture Google Calendar (webhook POST)
 
 ---
 
-## 🛠️ Capacités d'exécution
+## 🤝 Pipeline Content Team
 
-### Serveur (n8n / OpenClaw)
-Ce que Léo peut demander via commande Telegram ou en session directe :
+Le pipeline de production de contenu passe par l'équipe d'agents OpenClaw.
 
-| Action | Via n8n | Via OpenClaw | Notes |
-|--------|---------|--------------|-------|
-| **Logs/débug** | ✅ | ✅ | Commande bash sandbox |
-| **Config changements** | ⚠️ Validation ante | ⚠️ Validation ante | Backup obligatoire, décrire risques |
-| **Redémarrage services** | ✅ | ✅ | Confirm + attendre résultat |
-| **Webhook test** | ✅ | ✅ | Simulation complète n8n |
-| **Mail test** | ✅ | ❌ | Via Brevo intégration n8n |
-| **Récupération urgente** | ✅ | ✅ | Logs, screenshot, état système |
+### Commandes disponibles
+- `/brief [sujet]` → Lance le pipeline via Atlas → Clavis → Maya → Graphix → Pulse
+- `/equipe` → État de l'équipe
+- `/status` → Pipeline en cours
+- `/valider` → Passer à l'étape suivante
+- `/stop` → Suspendre
 
-### Données locales
-- Accès lecture/écriture fichiers `/home/node/.openclaw/workspace`
-- Pas d'Internet natif — tout passe par n8n ou webhook
+### Appel direct d'un agent
+```bash
+openclaw agent --agent atlas --message "[texte]"
+openclaw agent --agent clavis --message "[texte]"
+openclaw agent --agent maya-blog --message "[texte]"
+openclaw agent --agent maya-local --message "[texte]"
+openclaw agent --agent graphix --message "[texte]"
+openclaw agent --agent pulse --message "[texte]"
+```
 
-### Architecture de sécurité
-- **Pas de credentials en clair** dans messages Telegram
-- **Variables d'env serveur** uniquement (token API, clés privées)
-- **Firewall + Cloudflare Tunnel** → n8n derrière Zero Trust
-- **Validation avant modification** → backup, explication, confirmation
+**n8n reste utilisé pour :** briefings (WF2), GCal (WF3/WF4), saisie terrain (WF1).
+**PAS n8n pour :** production de contenu (équipe agents OpenClaw).
 
 ---
 
 ## ⚠️ Limitations et contraintes
 
-### Ce que Léo NE peut PAS faire
-- Créer des comptes utilisateurs ou modifier permissions sans supervision
-- Déployer code en production sans validation
-- Accéder Internet directement (sandbox OpenClaw)
+### Ce que Leo NE peut PAS faire
+- Créer des comptes ou modifier permissions sans supervision
+- Déployer en production sans validation d'Antoine
+- Accéder Internet directement (tout passe par n8n ou webhook)
 - Envoyer emails/SMS à tiers sans instruction explicite
-- Modifier Google Calendar sans confirmation
+- Modifier GCal sans confirmation d'Antoine
 - Gérer finances (Stripe, comptes bancaires) — consultation seulement
 
-### Capacités dégradées
-- **Notion :** lecture uniquement (pas d'écriture native) jusqu'à MCP configuration
-- **Telegram :** pas de file upload native — passthrough n8n seulement
-- **Images :** génération Nano Banana en attente de crédits
-
 ### Rate limits
-- **OpenRouter :** budget ~5€/mois (Haiku cheap → Gemini fallback)
+- **Gemini 2.5 Flash :** modèle principal (free tier — 1500 req/jour)
+- **Claude Haiku 4.5 :** via OpenRouter pour Orion et agents spécialisés
 - **n8n batch :** nuit seulement, max 2h CPU par exécution
-- **Telegram :** 30 messages/seconde max (respect rate limit)
-
----
-
-## 🔄 Workflow typique Léo
-
-```
-1. ENTRÉE → Message Telegram / Commande directe
-2. PARSING → Extraction contexte, intention, urgence
-3. RESSOURCES → Lecture SOUL.md, USER.md, MEMORY.md, fichiers projet
-4. DÉCISION → Lire, proposer, attendre validation
-5. EXÉCUTION → Appel API, script bash, webhook n8n, Notion
-6. FEEDBACK → Résultat, alerte + suggestion suivi
-7. MÉMOIRE → Log leçon appraise, mettre à jour MEMORY.md
-```
-
----
-
-## 📋 Tâches répétitives (batching)
-
-Léo exécute via WF2 (batch nuit) :
-
-- **Génération contenu :** articles blog, posts SEO, templates
-- **Audit système :** logs, métriques, drift détection
-- **Maintenance :** backup, cleanup, rotation données
-- **Rapports :** hebdo Horizons, métriques Expert Local, trésor
-
-Budget strict : max 30 tokens × 50 appels/nuit = effort limité mais fréquent.
-
----
-
-## 🎯 Prochaines capacités (roadmap)
-
-| Délai | Capacité | Impact |
-|-------|----------|--------|
-| Mars 2026 | MCP Notion intégré | Autonomie Horizons V2 complète |
-| Mars 2026 | Google Drive MCP | Accès docs critiques, blog pipeline |
-| Avril 2026 | Stripe MCP | Dashboard Expert Local live |
-| Q2 2026 | Image gen native (Nano Banana) | Visuels Auto blog, landing pages |
-| Q2 2026 | Voice via Telegram | Briefing audio + journaling vocal |
+- **Coût cible :** ≤ 5-10€/mois API total
 
 ---
 
 ## 🔐 Protocoles de sécurité
 
 ### Avant chaque action serveur
-1. **Décrire l'action** : ce qu'elle fait, fichiers/services affectés, risques
-2. **Proposer backup** : quelle donnée sauvegarder avant exécution
-3. **Attendre confirmation** : Antoine valide explicitement
-4. **Exécuter + rapporter** : résultat, logs, prochaines étapes
-5. **Documenter** : MEMORY.md log la leçon apprise
+1. Décrire l'action (fichiers/services affectés, risques)
+2. Proposer backup si nécessaire
+3. Attendre confirmation d'Antoine
+4. Exécuter + rapporter
+5. Documenter dans MEMORY.md
 
-### Pour données sensibles
-- **Aucun token/password en Telegram**
-- **Logs snippets seulement** (pas fichiers complets)
-- **Accès via Tailscale** quand possible (plutôt que Internet public)
-- **Chiffrement E2E** pour docs stratégiques (non-implémenté, à faire)
-
----
-
-## 📞 Demandes de clarification
-
-Si Antoine demande quelque chose qui croise les limites de ces capacités :
-
-1. **Proposer 2-3 interprétations** de ce qu'il pourrait signifier
-2. **Suggérer le type d'intégration manquante** si besoin technique
-3. **Documenter la demande** dans MEMORY.md comme pattern futur
-4. **Attendre décision** avant promesses ou contournements
+### Données sensibles
+- Aucun token/password en clair dans Telegram
+- Variables d'environnement serveur uniquement
+- Credentials exclus du repo GitHub (fichiers `.example`)
 
 ---
 
-*Ce fichier est la cartographie des capacités de Léo. À mettre à jour à chaque nouvelle intégration, limitation découverte, ou amélioration. C'est une référence vivante.*
+## 🎯 Roadmap capacités
 
-- Camera names and locations
-- SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
-- Anything environment-specific
-
-## Examples
-
-```markdown
-### Cameras
-
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
-
-### SSH
-
-- home-server → 192.168.1.100, user: admin
-
-### TTS
-
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
-```
-
-## Why Separate?
-
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+| Délai | Capacité | Impact |
+|-------|----------|--------|
+| Mars 2026 | Migration WF1 → Leo natif | Centralisation totale |
+| Avril 2026 | Stripe MCP | Dashboard expert-local live |
+| Q2 2026 | Voice via Telegram | Briefing audio + journaling vocal |
 
 ---
 
-Add whatever helps you do your job. This is your cheat sheet.
-
----
-
-## 🎯 Pipeline Content Team — PRIORITÉ SUR n8n POUR LE BLOG
-
-### IMPORTANT
-Le pipeline de production de contenu (blog et expert-local) passe désormais par l'équipe d'agents OpenClaw — PAS par n8n.
-
-### Commandes disponibles
-- `/brief [sujet]` → Lance le pipeline blog via Atlas → Clavis → Maya-Blog → Graphix → Pulse
-- `/equipe` → État de l'équipe
-- `/status` → Pipeline en cours
-- `/valider` → Passer à l'étape suivante
-- `/stop` → Suspendre
-
-### Agents disponibles
-- `atlas` → brief via : openclaw agent --agent atlas --message "[texte]"
-- `clavis` → brief via : openclaw agent --agent clavis --message "[texte]"
-- `maya-blog` → brief via : openclaw agent --agent maya-blog --message "[texte]"
-- `maya-local` → brief via : openclaw agent --agent maya-local --message "[texte]"
-- `graphix` → brief via : openclaw agent --agent graphix --message "[texte]"
-- `pulse` → brief via : openclaw agent --agent pulse --message "[texte]"
-
-### n8n reste utilisé pour
-- Briefings quotidiens (WF2)
-- Google Calendar (WF3/WF4)
-- Batch nocturne
-- PAS pour la production de contenu
+*Ce fichier est la cartographie des capacités de Léo. À mettre à jour à chaque nouvelle intégration.*
