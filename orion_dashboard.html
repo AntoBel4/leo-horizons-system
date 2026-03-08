@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orion — Job Hunter · Antoine Estarellas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: #1a2740;
+      --navy-light: #243352;
+      --gold: #e8963a;
+      --gold-light: #f2b06a;
+      --blue: #3d6b9e;
+      --blue-light: #5a8cc0;
+      --white: #ffffff;
+      --off-white: #f7f8fa;
+      --gray: #8a93a6;
+      --gray-light: #e8ecf2;
+      --success: #2ecc71;
+      --warning: #f39c12;
+      --danger: #e74c3c;
+      --purple: #8b5cf6;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--off-white);
+      color: var(--navy);
+      min-height: 100vh;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--navy);
+      padding: 0 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 20px rgba(26,39,64,0.3);
+    }
+
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--gold);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+    }
+
+    .logo-text {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: var(--white);
+      letter-spacing: -0.02em;
+    }
+
+    .logo-sub {
+      font-size: 0.7rem;
+      color: var(--gold);
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .last-update {
+      font-size: 0.75rem;
+      color: var(--gray);
+    }
+
+    .refresh-btn {
+      background: var(--gold);
+      color: var(--navy);
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .refresh-btn:hover { background: var(--gold-light); }
+    .refresh-btn.loading { opacity: 0.6; pointer-events: none; }
+
+    /* HERO STATS */
+    .stats-bar {
+      background: var(--navy-light);
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .stats-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+
+    .stat-card {
+      text-align: center;
+    }
+
+    .stat-number {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--gold);
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 0.72rem;
+      color: var(--gray);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.25rem;
+    }
+
+    /* MAIN LAYOUT */
+    .main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 2rem;
+    }
+
+    /* SECTION TITLES */
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--navy);
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .section-title span {
+      background: var(--navy);
+      color: var(--white);
+      font-size: 0.65rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 20px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    /* OFFRES CARDS */
+    .offres-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .offre-card {
+      background: var(--white);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      border: 1px solid var(--gray-light);
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      animation: fadeInUp 0.4s ease both;
+    }
+
+    .offre-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--blue);
+      border-radius: 4px 0 0 4px;
+    }
+
+    .offre-card.score-high::before { background: var(--success); }
+    .offre-card.score-med::before { background: var(--gold); }
+    .offre-card.score-low::before { background: var(--gray); }
+
+    .offre-card:hover {
+      box-shadow: 0 4px 20px rgba(26,39,64,0.1);
+      transform: translateY(-1px);
+      border-color: var(--blue-light);
+    }
+
+    .offre-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+
+    .offre-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--navy);
+      line-height: 1.3;
+      flex: 1;
+    }
+
+    .score-badge {
+      background: var(--navy);
+      color: var(--white);
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 0.85rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .score-badge.high { background: var(--success); }
+    .score-badge.med { background: var(--gold); color: var(--navy); }
+    .score-badge.low { background: var(--gray); }
+
+    .offre-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.6rem;
+    }
+
+    .meta-pill {
+      font-size: 0.72rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      background: var(--off-white);
+      color: var(--navy);
+      border: 1px solid var(--gray-light);
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .meta-pill.type { background: #e8f0fb; border-color: #c5d8f5; color: var(--blue); }
+    .meta-pill.lieu { background: #fff3e8; border-color: #fad9b5; color: #b36b1a; }
+    .meta-pill.source { background: #f0f9f4; border-color: #b8e6cc; color: #1a7a40; }
+
+    .offre-notes {
+      font-size: 0.8rem;
+      color: var(--gray);
+      margin-top: 0.6rem;
+      line-height: 1.5;
+      font-style: italic;
+    }
+
+    .offre-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.8rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--gray-light);
+    }
+
+    .statut-badge {
+      font-size: 0.72rem;
+      padding: 0.2rem 0.7rem;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    .statut-badge.etudier { background: #fef9e7; color: #b7950b; border: 1px solid #f9e79f; }
+    .statut-badge.candidater { background: #fef5e7; color: #d35400; border: 1px solid #fad7a0; }
+    .statut-badge.envoyee { background: #eaf4fb; color: #1a5276; border: 1px solid #aed6f1; }
+    .statut-badge.entretien { background: #f4ecf7; color: #6c3483; border: 1px solid #d2b4de; }
+    .statut-badge.acceptee { background: #eafaf1; color: #1e8449; border: 1px solid #a9dfbf; }
+    .statut-badge.refus { background: #fdedec; color: #922b21; border: 1px solid #f1948a; }
+
+    .offre-date {
+      font-size: 0.7rem;
+      color: var(--gray);
+    }
+
+    .offre-link {
+      color: var(--blue);
+      font-size: 0.75rem;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .offre-link:hover { color: var(--navy); }
+
+    /* SIDEBAR */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* KANBAN */
+    .kanban-widget {
+      background: var(--white);
+      border-radius: 12px;
+      padding: 1.25rem;
+      border: 1px solid var(--gray-light);
+    }
+
+    .kanban-cols {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .kanban-col {
+      background: var(--off-white);
+      border-radius: 8px;
+      padding: 0.75rem 0.5rem;
+      text-align: center;
+    }
+
+    .kanban-col-title {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--gray);
+      margin-bottom: 0.5rem;
+    }
+
+    .kanban-count {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .kanban-col.active .kanban-count { color: var(--gold); }
+    .kanban-col.sent .kanban-count { color: var(--blue); }
+    .kanban-col.interview .kanban-count { color: var(--purple); }
+
+    /* TACHES */
+    .taches-widget {
+      background: var(--white);
+      border-radius: 12px;
+      padding: 1.25rem;
+      border: 1px solid var(--gray-light);
+    }
+
+    .tache-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--gray-light);
+      animation: fadeInUp 0.3s ease both;
+    }
+
+    .tache-item:last-child { border-bottom: none; }
+
+    .tache-prio {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 0.3rem;
+      flex-shrink: 0;
+    }
+
+    .tache-prio.urgent { background: var(--danger); }
+    .tache-prio.semaine { background: var(--warning); }
+    .tache-prio.possible { background: var(--success); }
+
+    .tache-text {
+      font-size: 0.82rem;
+      color: var(--navy);
+      line-height: 1.4;
+      flex: 1;
+    }
+
+    .tache-offre {
+      font-size: 0.7rem;
+      color: var(--gray);
+      margin-top: 0.15rem;
+    }
+
+    .tache-statut {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      background: var(--off-white);
+      color: var(--gray);
+      border: 1px solid var(--gray-light);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* STRATEGIE WIDGET */
+    .strategie-widget {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+      border-radius: 12px;
+      padding: 1.25rem;
+      color: var(--white);
+    }
+
+    .strategie-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--gold);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .strategie-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-size: 0.8rem;
+    }
+
+    .strategie-item:last-child { border-bottom: none; }
+
+    .strategie-num {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: var(--gold);
+      min-width: 28px;
+    }
+
+    .strategie-info { flex: 1; }
+    .strategie-poste { color: var(--white); font-weight: 500; }
+    .strategie-salaire { color: var(--gray); font-size: 0.72rem; margin-top: 0.1rem; }
+
+    /* LOADING & EMPTY STATES */
+    .loading-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--gray);
+    }
+
+    .loading-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--gray-light);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: var(--gray);
+    }
+
+    .empty-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .empty-text { font-size: 0.85rem; }
+
+    /* ANIMATIONS */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* FILTER BAR */
+    .filter-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      font-size: 0.75rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 20px;
+      border: 1px solid var(--gray-light);
+      background: var(--white);
+      color: var(--gray);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    .filter-btn:hover, .filter-btn.active {
+      background: var(--navy);
+      color: var(--white);
+      border-color: var(--navy);
+    }
+
+    /* ERROR */
+    .error-banner {
+      background: #fdedec;
+      border: 1px solid #f1948a;
+      color: #922b21;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    /* MOBILE */
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr; padding: 1rem; }
+      .stats-inner { grid-template-columns: repeat(2, 1fr); }
+      .sidebar { order: -1; }
+      .kanban-cols { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 480px) {
+      .stats-bar { padding: 1rem; }
+      .stats-inner { gap: 0.5rem; }
+      .stat-number { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">🌟</div>
+        <div>
+          <div class="logo-text">Orion</div>
+          <div class="logo-sub">Job Hunter · Antoine Estarellas</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="last-update" id="lastUpdate">Chargement...</span>
+        <button class="refresh-btn" onclick="loadAll()" id="refreshBtn">
+          ↻ Actualiser
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="stats-bar">
+    <div class="stats-inner">
+      <div class="stat-card">
+        <div class="stat-number" id="statTotal">—</div>
+        <div class="stat-label">Offres détectées</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statActives">—</div>
+        <div class="stat-label">À candidater</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statEnvoyees">—</div>
+        <div class="stat-label">Candidatures envoyées</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statEntretiens">—</div>
+        <div class="stat-label">Entretiens</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="left-col">
+      <div class="error-banner" id="errorBanner"></div>
+
+      <div class="section-title">
+        🎯 Offres détectées
+        <span id="offresCount">0</span>
+      </div>
+
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="filterOffres('all', this)">Toutes</button>
+        <button class="filter-btn" onclick="filterOffres('etudier', this)">🔍 À étudier</button>
+        <button class="filter-btn" onclick="filterOffres('candidater', this)">⭐ À candidater</button>
+        <button class="filter-btn" onclick="filterOffres('envoyee', this)">📨 Envoyées</button>
+        <button class="filter-btn" onclick="filterOffres('entretien', this)">🤝 Entretiens</button>
+      </div>
+
+      <div class="offres-grid" id="offresGrid">
+        <div class="loading-state">
+          <div class="loading-spinner"></div>
+          <div>Chargement des offres...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+
+      <!-- KANBAN RAPIDE -->
+      <div class="kanban-widget">
+        <div class="section-title">📋 Pipeline candidatures</div>
+        <div class="kanban-cols">
+          <div class="kanban-col active">
+            <div class="kanban-col-title">À traiter</div>
+            <div class="kanban-count" id="k1">—</div>
+          </div>
+          <div class="kanban-col sent">
+            <div class="kanban-col-title">Envoyées</div>
+            <div class="kanban-count" id="k2">—</div>
+          </div>
+          <div class="kanban-col interview">
+            <div class="kanban-col-title">Entretiens</div>
+            <div class="kanban-count" id="k3">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TACHES -->
+      <div class="taches-widget">
+        <div class="section-title">
+          ✅ Tâches actives
+          <span id="tachesCount">0</span>
+        </div>
+        <div id="tachesList">
+          <div class="loading-state" style="padding:1.5rem">
+            <div class="loading-spinner"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STRATEGIE -->
+      <div class="strategie-widget">
+        <div class="strategie-title">🗺️ Repositionnement stratégique</div>
+        <div class="strategie-item">
+          <div class="strategie-num">1</div>
+          <div class="strategie-info">
+            <div class="strategie-poste">DPO / Data Governance</div>
+            <div class="strategie-salaire">45–65k€ · M2 Droit = avantage décisif</div>
+          </div>
+        </div>
+        <div class="strategie-item">
+          <div class="strategie-num">2</div>
+          <div class="strategie-info">
+            <div class="strategie-poste">Consultant Transformation Digitale</div>
+            <div class="strategie-salaire">45–60k€ · Secteur privé / conseil</div>
+          </div>
+        </div>
+        <div class="strategie-item">
+          <div class="strategie-num">3</div>
+          <div class="strategie-info">
+            <div class="strategie-poste">Program Officer ICT4D</div>
+            <div class="strategie-salaire">45–70k€ · Afrique francophone + ONG</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // CONFIGURATION — À adapter selon votre déploiement
+    // ============================================================
+    const NOTION_PROXY = '/api/notion'; // proxy n8n (voir ci-dessous)
+    const DB_OFFRES = 'a927149f-a2ae-4c73-9690-15370da3c666';
+    const DB_TACHES = '81da9923-bc43-41ea-81fa-5efbff056db1';
+
+    let allOffres = [];
+    let currentFilter = 'all';
+
+    // ============================================================
+    // CHARGEMENT DES DONNÉES VIA WEBHOOK N8N
+    // ============================================================
+    async function fetchNotion(endpoint) {
+      const response = await fetch(`https://coaching.estarellas.online/webhook/orion-dashboard?db=${endpoint}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+
+    async function loadOffres() {
+      try {
+        const data = await fetchNotion('offres');
+        allOffres = data.results || [];
+        renderOffres(allOffres);
+        updateStats(allOffres);
+      } catch(e) {
+        showError('Impossible de charger les offres. Vérifiez le webhook n8n.');
+        document.getElementById('offresGrid').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🔌</div>
+            <div class="empty-text">Webhook non connecté.<br>Configurer le WF "Orion Dashboard Reader".</div>
+          </div>`;
+      }
+    }
+
+    async function loadTaches() {
+      try {
+        const data = await fetchNotion('taches');
+        renderTaches(data.results || []);
+      } catch(e) {
+        document.getElementById('tachesList').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <div class="empty-text">Aucune tâche pour l'instant.</div>
+          </div>`;
+      }
+    }
+
+    async function loadAll() {
+      const btn = document.getElementById('refreshBtn');
+      btn.classList.add('loading');
+      btn.textContent = '⟳ Chargement...';
+
+      await Promise.all([loadOffres(), loadTaches()]);
+
+      btn.classList.remove('loading');
+      btn.innerHTML = '↻ Actualiser';
+      document.getElementById('lastUpdate').textContent = 'Mis à jour ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    }
+
+    // ============================================================
+    // RENDU DES OFFRES
+    // ============================================================
+    function renderOffres(offres) {
+      const grid = document.getElementById('offresGrid');
+      document.getElementById('offresCount').textContent = offres.length;
+
+      if (offres.length === 0) {
+        grid.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-text">Aucune offre pour ce filtre.<br>Orion scrute les sources en continu...</div>
+          </div>`;
+        return;
+      }
+
+      grid.innerHTML = offres.map((offre, i) => {
+        const p = offre.properties || {};
+        const titre = getTitle(p.Titre);
+        const org = getText(p.Organisation);
+        const pays = getSelect(p.Pays);
+        const ville = getText(p.Ville);
+        const salaire = getText(p.Salaire);
+        const score = getNumber(p['Score Orion']);
+        const statut = getSelect(p.Statut);
+        const source = getSelect(p.Source);
+        const type = getSelect(p['Type de poste']);
+        const notes = getText(p['Notes Orion']);
+        const date = getDate(p['Date détection']);
+        const lien = getUrl(p.Lien);
+
+        const scoreClass = score >= 8 ? 'high' : score >= 6 ? 'med' : 'low';
+        const cardClass = score >= 8 ? 'score-high' : score >= 6 ? 'score-med' : 'score-low';
+        const statutClass = getStatutClass(statut);
+        const lieu = ville ? `${ville}, ${pays}` : pays;
+
+        return `
+          <div class="offre-card ${cardClass}" style="animation-delay: ${i * 0.06}s">
+            <div class="offre-header">
+              <div class="offre-title">${titre || 'Sans titre'}</div>
+              ${score ? `<div class="score-badge ${scoreClass}">${score}/10</div>` : ''}
+            </div>
+            <div class="offre-meta">
+              ${org ? `<span class="meta-pill">🏢 ${org}</span>` : ''}
+              ${lieu ? `<span class="meta-pill lieu">📍 ${lieu}</span>` : ''}
+              ${type ? `<span class="meta-pill type">${type}</span>` : ''}
+              ${salaire ? `<span class="meta-pill">💰 ${salaire}</span>` : ''}
+              ${source ? `<span class="meta-pill source">${source}</span>` : ''}
+            </div>
+            ${notes ? `<div class="offre-notes">"${notes}"</div>` : ''}
+            <div class="offre-footer">
+              <span class="statut-badge ${statutClass}">${statut || '🔍 À étudier'}</span>
+              <div style="display:flex;align-items:center;gap:0.75rem">
+                ${lien ? `<a href="${lien}" target="_blank" class="offre-link">🔗 Voir l'offre</a>` : ''}
+                <span class="offre-date">${date}</span>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // ============================================================
+    // RENDU DES TACHES
+    // ============================================================
+    function renderTaches(taches) {
+      const list = document.getElementById('tachesList');
+      const actives = taches.filter(t => getSelect((t.properties||{}).Statut) !== '✅ Fait');
+      document.getElementById('tachesCount').textContent = actives.length;
+
+      if (actives.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">✅</div>
+            <div class="empty-text">Aucune tâche en cours.</div>
+          </div>`;
+        return;
+      }
+
+      list.innerHTML = actives.slice(0, 8).map((t, i) => {
+        const p = t.properties || {};
+        const nom = getTitle(p.Tâche) || getTitle(p.Name) || 'Tâche';
+        const prio = getSelect(p.Priorité);
+        const statut = getSelect(p.Statut);
+        const offre = getText(p['Offre liée']);
+        const prioClass = prio?.includes('Urgent') ? 'urgent' : prio?.includes('semaine') ? 'semaine' : 'possible';
+
+        return `
+          <div class="tache-item" style="animation-delay:${i*0.05}s">
+            <div class="tache-prio ${prioClass}"></div>
+            <div style="flex:1;min-width:0">
+              <div class="tache-text">${nom}</div>
+              ${offre ? `<div class="tache-offre">${offre}</div>` : ''}
+            </div>
+            <span class="tache-statut">${statut || '📋 À faire'}</span>
+          </div>`;
+      }).join('');
+    }
+
+    // ============================================================
+    // STATS & KANBAN
+    // ============================================================
+    function updateStats(offres) {
+      const total = offres.length;
+      const actives = offres.filter(o => {
+        const s = getSelect((o.properties||{}).Statut);
+        return s?.includes('étudier') || s?.includes('candidater');
+      }).length;
+      const envoyees = offres.filter(o => getSelect((o.properties||{}).Statut)?.includes('envoyée')).length;
+      const entretiens = offres.filter(o => getSelect((o.properties||{}).Statut)?.includes('Entretien')).length;
+
+      document.getElementById('statTotal').textContent = total;
+      document.getElementById('statActives').textContent = actives;
+      document.getElementById('statEnvoyees').textContent = envoyees;
+      document.getElementById('statEntretiens').textContent = entretiens;
+
+      document.getElementById('k1').textContent = actives;
+      document.getElementById('k2').textContent = envoyees;
+      document.getElementById('k3').textContent = entretiens;
+    }
+
+    // ============================================================
+    // FILTRES
+    // ============================================================
+    function filterOffres(filter, btn) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (filter === 'all') {
+        renderOffres(allOffres);
+      } else {
+        const filtered = allOffres.filter(o => {
+          const s = getSelect((o.properties||{}).Statut) || '';
+          if (filter === 'etudier') return s.includes('étudier');
+          if (filter === 'candidater') return s.includes('candidater');
+          if (filter === 'envoyee') return s.includes('envoyée');
+          if (filter === 'entretien') return s.includes('Entretien');
+          return true;
+        });
+        renderOffres(filtered);
+      }
+    }
+
+    // ============================================================
+    // HELPERS NOTION
+    // ============================================================
+    function getTitle(prop) {
+      return prop?.title?.[0]?.plain_text || prop?.title?.[0]?.text?.content || '';
+    }
+    function getText(prop) {
+      return prop?.rich_text?.[0]?.plain_text || '';
+    }
+    function getSelect(prop) {
+      return prop?.select?.name || '';
+    }
+    function getNumber(prop) {
+      return prop?.number || 0;
+    }
+    function getUrl(prop) {
+      return prop?.url || '';
+    }
+    function getDate(prop) {
+      const d = prop?.created_time || prop?.date?.start;
+      if (!d) return '';
+      return new Date(d).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+    }
+    function getStatutClass(statut) {
+      if (!statut) return 'etudier';
+      if (statut.includes('étudier')) return 'etudier';
+      if (statut.includes('candidater')) return 'candidater';
+      if (statut.includes('envoyée')) return 'envoyee';
+      if (statut.includes('Entretien')) return 'entretien';
+      if (statut.includes('Acceptée')) return 'acceptee';
+      if (statut.includes('Refus')) return 'refus';
+      return 'etudier';
+    }
+    function showError(msg) {
+      const banner = document.getElementById('errorBanner');
+      banner.textContent = msg;
+      banner.style.display = 'block';
+    }
+
+    // ============================================================
+    // INIT
+    // ============================================================
+    loadAll();
+    // Auto-refresh toutes les 5 minutes
+    setInterval(loadAll, 5 * 60 * 1000);
+  </script>
+
+</body>
+</html>
