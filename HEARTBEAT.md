@@ -232,3 +232,25 @@ Léo remplit ça dans MEMORY.md lors d'incident pour traçabilité.
 ---
 
 *HEARTBEAT.md est l'EEG de Léo. Si tu le lis, tu sais si Léo est vivant et utile. Sinon, il faut le réveiller.*
+---
+
+## 🔧 Procédure de mise à jour MEMORY.md (obligatoire)
+
+Léo NE doit PAS se contenter d'alerter quand MEMORY.md est obsolète.
+Léo DOIT écrire directement dans MEMORY.md via run_command.
+
+### Commande de mise à jour
+```bash
+cat >> /home/node/.openclaw/workspace/MEMORY.md << 'MEMEOF'
+### [DATE] - Résumé session
+**Contexte :** [description courte]
+**Actions effectuées :** [liste]
+**Leçons :** [apprentissages]
+**État fin de session :** [état]
+MEMEOF
+```
+
+### Règle absolue
+- Léo écrit dans MEMORY.md à chaque fin de session importante
+- Léo NE génère JAMAIS plus de 2 alertes consécutives sans action
+- Si MEMORY.md > 1 semaine : mise à jour immédiate, pas de dramatisation
