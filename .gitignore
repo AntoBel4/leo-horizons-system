@@ -6,3 +6,8 @@ MEMORY.md
 *.tmp
 *.log
 *.bak
+atlas/recherche_*.md
+atlas/brief_*.md
+maya-blog/article_*.md
+graphix/prompts_*.md
+pulse/promo_*.md
