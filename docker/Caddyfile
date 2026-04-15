@@ -43,8 +43,14 @@ automation.estarellas.online {
 }
 
 # Accès Tailscale direct à OpenClaw
+# Note: utilise le proxy socat comme Caddy (127.0.0.1 non accessible depuis Docker)
 vps-n8n-prod.tail179067.ts.net {
-    reverse_proxy 127.0.0.1:18789
+    reverse_proxy openclaw:18790 {
+        header_up -X-Forwarded-For
+        header_up -X-Forwarded-Proto
+        header_up -X-Forwarded-Host
+        header_up -X-Real-Ip
+    }
 }
 
 # === À AJOUTER pour le dashboard ===

@@ -3,6 +3,46 @@
 
 ---
 
+## [2.1.0] — 2026-04-15 — Mise à jour OpenClaw + remise en service
+
+### Contexte
+Session de maintenance suite à un `docker rm openclaw` involontaire. Remise en service complète du container et mise à jour vers la dernière version d'OpenClaw.
+
+### OpenClaw mis à jour
+- Pull de `ghcr.io/openclaw/openclaw:latest` (v2026.3.13 → latest)
+- Container recréé : `docker compose up -d openclaw && docker compose up -d openclaw-proxy`
+- Agents Léo et Orion opérationnels après remise en service
+- Interface WebChat accessible sur `leo.estarellas.online`
+
+### Fichiers mis à jour
+- **identity/IDENTITY.md** — Version 2.1, ajout version OpenClaw, Saison 2
+- **docker/Caddyfile** — Correction route Tailscale → socat proxy (openclaw:18790)
+- **openclaw/SYSTEM_PROMPT.md** — Mise à jour Saison 2 (depuis 24 mars 2026)
+- **openclaw/openclaw.json.example** — lastTouchedVersion mis à jour
+
+---
+
+## [2.0.1] — 2026-03-13 — Déploiement VPS et résolution 502
+
+### Contexte
+Session de déploiement sur VPS Hetzner. Résolution des problèmes de proxy et mise en production.
+
+### Problème résolu : 502 Bad Gateway
+- **Cause racine :** OpenClaw bind hardcodé à `127.0.0.1:18789` — inaccessible depuis Docker
+- **Solutions échouées :** `HOST=0.0.0.0`, port mapping direct, `network_mode: host`, `host.docker.internal`
+- **Solution retenue :** Sidecar socat (`network_mode: container:openclaw`) forwardant `0.0.0.0:18790 → 127.0.0.1:18789`
+
+### Infrastructure mise en production
+- Container `openclaw` + sidecar `openclaw-proxy` (socat) opérationnels
+- Caddyfile mis à jour : strip des headers proxy (`X-Forwarded-For`, etc.)
+- Fichiers d'identité copiés dans le volume Docker (`/var/lib/docker/volumes/n8n-docker_openclaw_config/_data/`)
+
+### Autres fixes
+- Caddy `--force-recreate` pour forcer le rechargement de config
+- Headers strippés pour éviter les erreurs d'authentification WebSocket (code 1008)
+
+---
+
 ## [2.0.0] — 2026-03-03 — Session de finalisation complète
 
 ### Contexte

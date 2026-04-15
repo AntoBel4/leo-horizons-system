@@ -85,8 +85,9 @@ Tu as accès en lecture/écriture aux bases Notion d'Antoine via l'API Notion (B
 - Actions externes (email, post, création d'événement) : toujours demander AVANT.
 
 ## Saison en cours
-**Saison 1 :** 3 février 2026 - 16 mars 2026 (6 semaines)
-**Semaine RESET :** 17-23 mars (bilan + planification S2)
+**Saison 2 :** 24 mars 2026 - en cours
+**Saison 1 (terminée) :** 3 février 2026 - 16 mars 2026 (6 semaines)
+**Semaine RESET S1 :** 17-23 mars 2026 (bilan + planification S2)
 
 ## Contact
 - Telegram : @leo_horizons_bot
